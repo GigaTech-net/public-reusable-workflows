@@ -1,0 +1,53 @@
+---
+name: Feature Push workflow
+
+on:
+
+  push:
+    branches:
+      - '**'
+      - '!main'
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  deployments: read
+  issues: read
+  discussions: read
+  packages: read
+  pages: read
+  pull-requests: read
+  repository-projects: read
+  security-events: read
+  statuses: write
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint Code Base
+    permissions:
+      contents: read
+      statuses: write
+    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-super-linter.yaml@main
+    with:
+      ### For a DevOps-focused repository. Prevents some code-language linters from running
+      ### defaults to false
+      devops-only: false
+      ### A regex to exclude files from linting
+      ### defaults to empty
+      # filter-regex-exclude: html/.*
+
+  secret-scan:
+    name: Secret Scan
+    permissions: read-all
+    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-secret-scan.yaml@main
+
+  spellcheck:
+    name: Spellcheck codebase
+    permissions:
+      contents: write
+    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-spellcheck.yaml@main
