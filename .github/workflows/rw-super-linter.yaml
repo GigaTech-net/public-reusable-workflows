@@ -39,7 +39,12 @@ on:
         type: string
         default: 'ubuntu-latest'
         description: The default runner to use for this workflow
-
+      forkedRepoLIntRestriction:
+        required: false
+        type: boolean
+        default: false
+        description: The calling repo is from a forked repo and therefore we want to restrict linting so that we don't have to deal with 3rd party lint errors
+  
 permissions:
   contents: read           # git permissions to repo pull/push
   statuses: write          # read/write to repo custom statuses and checks
@@ -138,6 +143,25 @@ jobs:
             echo "VALIDATE_YAML=true";
           } >> $GITHUB_ENV
 
+      - name: Disable linting for forked repos
+        if: ${{ inputs.forkedRepoLIntRestriction == true }}
+        run: |
+          # shellcheck disable=2086
+          { 
+            echo "VALIDATE_BASH=false";
+            echo "VALIDATE_SHELL_SHFMT=false";
+            echo "VALIDATE_EDITORCONFIG=false";
+            echo "VALIDATE_CLOUDFORMATION=false";
+            echo "VALIDATE_NATURAL_LANGUAGE=false";
+            echo "VALIDATE_TYPESCRIPT_STANDARD=false";
+            echo "VALIDATE_GITLEAKS=false";
+            echo "VALIDATE_BASH_EXEC=false";
+            echo "VALIDATE_MARKDOWN=false";
+            echo "VALIDATE_CHECKOV=false";
+            echo "VALIDATE_JAVASCRIPT_STANDARD=false";
+            echo "VALIDATE_TERRAFORM_TFLINT=false";
+          } >> $GITHUB_ENV
+  
       - name: debug env for super linter
         run: |
           # shellcheck disable=2086
