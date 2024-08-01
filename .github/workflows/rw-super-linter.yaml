@@ -120,6 +120,8 @@ jobs:
             echo "VALIDATE_TYPESCRIPT_ES=false";
             echo "VALIDATE_TYPESCRIPT_STANDARD=false";
             echo "VALIDATE_JAVASCRIPT_STANDARD=false";
+            echo "VALIDATE_TYPESCRIPT_PRETTIER=false";
+            echo "VALIDATE_JAVASCRIPT_PRETTIER=false";
             echo "VALIDATE_PYTHON_MYPY=false";
             echo "VALIDATE_PYTHON_BLACK=false";
             echo "VALIDATE_PYTHON_FLAKE8=false";
@@ -154,6 +156,8 @@ jobs:
             echo "VALIDATE_CLOUDFORMATION=false";
             echo "VALIDATE_NATURAL_LANGUAGE=false";
             echo "VALIDATE_TYPESCRIPT_STANDARD=false";
+            echo "VALIDATE_TYPESCRIPT_PRETTIER=false";
+            echo "VALIDATE_JAVASCRIPT_PRETTIER=false";
             echo "VALIDATE_GITLEAKS=false";
             echo "VALIDATE_BASH_EXEC=false";
             echo "VALIDATE_MARKDOWN=false";
