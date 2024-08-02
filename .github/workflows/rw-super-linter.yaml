@@ -197,6 +197,8 @@ jobs:
           VALIDATE_SHELL_SHFMT: false
           VALIDATE_EDITORCONFIG: false
           VALIDATE_TYPESCRIPT_STANDARD: false
+          VALIDATE_TYPESCRIPT_PRETTIER: false
+          VALIDATE_JAVASCRIPT_PRETTIER: false
           LINTER_RULES_PATH: .github/linters
           FILTER_REGEX_EXCLUDE: ${{ env.FILTER_REGEX_EXCLUDE }}
           FILTER_REGEX_INCLUDE: ${{ env.FILTER_REGEX_INCLUDE }}
