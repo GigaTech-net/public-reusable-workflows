@@ -44,7 +44,7 @@ jobs:
 
       - name: determine semver
         id: determine-semver
-        uses: reecetech/version-increment@2024.4.4
+        uses: reecetech/version-increment@2024.9.1
         with:
           use_api: true
           increment: minor
