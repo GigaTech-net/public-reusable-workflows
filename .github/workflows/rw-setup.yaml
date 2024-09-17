@@ -22,7 +22,7 @@ on:
       branch:
         description: "the current GitHub branch"
         value: ${{ jobs.setup.outputs.branch }}
-        
+
 permissions: read-all
 
 jobs:

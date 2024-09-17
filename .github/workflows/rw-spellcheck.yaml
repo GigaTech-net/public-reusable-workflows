@@ -7,11 +7,11 @@ on:
       wordsToIgnore:
         required: false
         type: string
-        description: 'Comma separated words to ignore spellchecking'
+        description: "Comma separated words to ignore spellchecking"
       filesToIgnore:
         required: false
         type: string
-        description: 'Comma separated file names to ignore spellchecking'
+        description: "Comma separated file names to ignore spellchecking"
 
 permissions:
   contents: write

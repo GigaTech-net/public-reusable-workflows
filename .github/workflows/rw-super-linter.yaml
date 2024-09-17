@@ -37,17 +37,17 @@ on:
       runnerOS:
         required: false
         type: string
-        default: 'ubuntu-latest'
+        default: "ubuntu-latest"
         description: The default runner to use for this workflow
       forkedRepoLIntRestriction:
         required: false
         type: boolean
         default: false
         description: The calling repo is from a forked repo and therefore we want to restrict linting so that we don't have to deal with 3rd party lint errors
-  
+
 permissions:
-  contents: read           # git permissions to repo pull/push
-  statuses: write          # read/write to repo custom statuses and checks
+  contents: read # git permissions to repo pull/push
+  statuses: write # read/write to repo custom statuses and checks
 
 jobs:
   super-lint:
@@ -165,7 +165,7 @@ jobs:
             echo "VALIDATE_JAVASCRIPT_STANDARD=false";
             echo "VALIDATE_TERRAFORM_TFLINT=false";
           } >> $GITHUB_ENV
-  
+
       - name: debug env for super linter
         run: |
           # shellcheck disable=2086
