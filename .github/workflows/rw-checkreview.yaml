@@ -7,13 +7,13 @@ on:
       needsReviewLabel:
         required: false
         type: string
-        description: 'the label to signify that a manual review is required'
-        default: 'needs-human-review'
+        description: "the label to signify that a manual review is required"
+        default: "needs-human-review"
     outputs:
       human_review_needed:
         description: "true if a human review is needed, false otherwise"
         value: ${{ jobs.setup.outputs.human_review_needed }}
-        
+
 permissions: read-all
 
 jobs:

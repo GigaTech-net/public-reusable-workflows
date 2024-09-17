@@ -2,7 +2,6 @@
 name: Main PR workflow
 
 on:
-
   pull_request:
     types: [opened, synchronize, reopened, edited]
     branches:
@@ -21,7 +20,7 @@ permissions:
   pull-requests: write
   repository-projects: read
   security-events: read
-  statuses: write   
+  statuses: write
 
 # cancel any previously-started, yet still active runs of this workflow on the same branch
 concurrency:
@@ -60,13 +59,13 @@ jobs:
       ### A regex to exclude files from linting
       ### defaults to empty
       # filter-regex-exclude: html/.*
-    
+
   secret-scan:
     name: Secret Scan
     needs: checkout
     permissions: read-all
     uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-secret-scan.yaml@main
-    
+
   spellcheck:
     name: Spellcheck codebase
     needs: checkout
@@ -121,7 +120,7 @@ jobs:
     needs: [human-review, lint, secret-scan, spellcheck]
     runs-on: ubuntu-latest
     if: needs.human-review.outputs.human_review_needed == 'false'
-    steps:  
+    steps:
       - name: Approve the PR if human review not needed
         run: gh pr review --approve "$PR_URL"
         env:

@@ -1,39 +1,39 @@
 ---
 name: PR Complexity Check
 
-on:    
+on:
   workflow_call:
     inputs:
       directoriesToCheck:
         required: false
         type: string
-        description: 'pipe delimited top level directories to check for complexity'
-        default: 'src|input'
+        description: "pipe delimited top level directories to check for complexity"
+        default: "src|input"
       linesThreshold:
         required: false
         type: number
-        description: 'the number of lines that have changed to be considered complex'
+        description: "the number of lines that have changed to be considered complex"
         default: 200
       filesThreshold:
         required: false
         type: number
-        description: 'the number of files that have changed to be considered complex'
+        description: "the number of files that have changed to be considered complex"
         default: 5
       reviewTeam:
         required: false
         type: string
-        description: 'the team in the GigaTECH-net github repo to use for code reviews'
-        default: 'GT-dev-randd'
+        description: "the team in the GigaTECH-net github repo to use for code reviews"
+        default: "GT-dev-randd"
       needsReviewLabel:
         required: false
         type: string
-        description: 'the label to signify that a manual review is required'
-        default: 'needs-human-review'
+        description: "the label to signify that a manual review is required"
+        default: "needs-human-review"
       tgtBranch:
         required: false
         type: string
-        description: 'the target branch to check complexity against (ie target of a PR)'
-        default: 'origin/main'
+        description: "the target branch to check complexity against (ie target of a PR)"
+        default: "origin/main"
     outputs:
       changed_files:
         description: "the files that were changed"
@@ -46,7 +46,7 @@ on:
         value: ${{ jobs.check_complexity.outputs.complex }}
       team_members:
         description: "the team members to request a review from"
-        value: ${{ jobs.check_complexity.outputs.team_members }} 
+        value: ${{ jobs.check_complexity.outputs.team_members }}
 
 permissions:
   contents: write
@@ -166,4 +166,3 @@ jobs:
           }
         env:
           GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
-  

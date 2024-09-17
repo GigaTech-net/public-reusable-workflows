@@ -2,11 +2,10 @@
 name: Feature Push workflow
 
 on:
-
   push:
     branches:
-      - '**'
-      - '!main'
+      - "**"
+      - "!main"
 
 permissions:
   actions: read
