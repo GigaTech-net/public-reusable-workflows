@@ -33,6 +33,9 @@ env:
 jobs:
   validate-pr-title:
     uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-validate-pr-title.yaml@main
+    with:
+      ticket_key_regex: '([Hh][Oo][Tt][Ff][Ii][Xx]|([Pp][Rr][Oo])-\d{1,5})'
+
 
   checkout:
     runs-on: ubuntu-latest
