@@ -35,7 +35,12 @@ jobs:
           }
 
       - name: Install codespell
-        run: pip install codespell
+        run: |
+          {
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install codespell
+          }
 
       - name: Unpack and use codespell autocorrect dictionary
         run: wget https://raw.githubusercontent.com/codespell-project/codespell/master/codespell_lib/data/dictionary.txt
@@ -43,6 +48,7 @@ jobs:
       - name: Run spellcheck
         run: |
           {
+            source venv/bin/activate
             codespell \
               -D dictionary.txt \
               --count \
