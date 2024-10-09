@@ -36,7 +36,6 @@ jobs:
     with:
       ticket_key_regex: '([Hh][Oo][Tt][Ff][Ii][Xx]|([Pp][Rr][Oo])-\d{1,5})'
 
-
   checkout:
     runs-on: ubuntu-latest
     needs: validate-pr-title

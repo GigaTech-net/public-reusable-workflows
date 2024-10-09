@@ -53,7 +53,7 @@ jobs:
               -D dictionary.txt \
               --count \
               --quiet-level 2 \
-              --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,.gitignore,./src,.dockerignore,Dockerfile,package.json,package-lock.json,${{ inputs.filesToIgnore }}" \
+              --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,.gitignore,./src,./venv,.dockerignore,Dockerfile,package.json,package-lock.json,${{ inputs.filesToIgnore }}" \
               -L ehr,requestor,promis,loinc,recengine,sdvosb,${{ inputs.wordsToIgnore }} \
               --write-changes
             rm dictionary.txt

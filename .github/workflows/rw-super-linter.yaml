@@ -164,6 +164,9 @@ jobs:
             echo "VALIDATE_CHECKOV=false";
             echo "VALIDATE_JAVASCRIPT_STANDARD=false";
             echo "VALIDATE_TERRAFORM_TFLINT=false";
+            echo "VALIDATE_JSON_PRETTIER=false";
+            echo "VALIDATE_MARKDOWN_PRETTIER=false";
+            echo "VALIDATE_YAML_PRETTIER=false";
           } >> $GITHUB_ENV
 
       - name: debug env for super linter
