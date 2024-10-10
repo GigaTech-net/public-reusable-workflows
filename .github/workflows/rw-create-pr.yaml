@@ -1,0 +1,72 @@
+---
+name: Create Pull Request
+
+on:
+  workflow_call:
+    inputs:
+      head-branch:
+        required: false
+        type: string
+        default: "development"
+        description: "the name of the branch to merge into the base branch"
+      base-branch:
+        required: false
+        type: string
+        default: "main"
+        description: "the name of the branch to merge into"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.head-branch }}
+          fetch-depth: 0
+
+      - name: Check for Changes
+        id: check_changes
+        run: |
+          # shellcheck disable=SC2116,SC2016,SC2086
+          {
+            changes_detected=true
+            git fetch origin ${{ inputs.base-branch }}:${{ inputs.base-branch }}
+            if git diff --quiet ${{ inputs.base-branch }}...${{ inputs.head-branch }}; then
+              echo "No changes detected between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+              changes_detected=false
+            else
+              echo "Changes detected between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+              changes_detected=true
+            fi
+              echo "changes_detected=${changes_detected}" >> $GITHUB_OUTPUT
+          }
+
+      - name: Check for Existing Open PRs
+        id: check_existing_prs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+        run: |
+          # shellcheck disable=SC2116,SC2016,SC2086
+          {
+            open_pr=false
+            if gh pr list --state open --base ${{ inputs.base-branch }} --head ${{ inputs.head-branch }} | grep -q .; then
+              echo "Open PR already exists bewteen ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+              open_pr=true
+            else
+              echo "No open PR exists between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+              open_pr=false
+            fi
+            echo "open_pr=${open_pr}" >> $GITHUB_OUTPUT
+          }
+
+      - name: Create PR
+        if: steps.check_changes.outputs.changes_detected == 'true' && steps.check_existing_prs.outputs.open_pr == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+        run: |
+          echo -e "This pull request may merge: \n- Latest Dependencies\n- Bug Fixes\n- New Features" | gh pr create --base ${{ inputs.base-branch }} --head ${{ inputs.head-branch }} --title "feat: merge to bring ${{ inputs.base-branch }} up to date with ${{ inputs.head-branch }}" --body-file -
