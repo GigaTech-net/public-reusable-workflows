@@ -1,11 +1,7 @@
 ---
-# original template from: https://github.com/bretfisher/super-linter-workflow/blob/main/.github/workflows/reusable-super-linter.yaml
-
-###########################
-###########################
-## Linter GitHub Actions ##
-###########################
-###########################
+  # Documentation: https://help.github.com/en/articles/workflow-syntax-for-github-actions
+  # Original template from: https://github.com/bretfisher/super-linter-workflow/blob/main/.github/workflows/reusable-super-linter.yaml
+  
 name: Lint all the codes
 
 #
@@ -89,24 +85,6 @@ jobs:
         run: |
           echo VALIDATE_ALL_CODEBASE=${{ !contains(github.event_name, 'pull_request') }}
 
-      # customize excluded paths and files with regex
-      - name: FILTER_REGEX_EXCLUDE
-        if: ${{ inputs.filter-regex-exclude }}
-        run: |
-          # shellcheck disable=2086
-          {
-            echo "FILTER_REGEX_EXCLUDE='${{ inputs.filter-regex-exclude }}'" >> $GITHUB_ENV
-          }
-
-      # customize included paths and files with regex
-      - name: FILTER_REGEX_INCLUDE
-        if: ${{ inputs.filter-regex-include }}
-        run: |
-          # shellcheck disable=2086
-          {
-            echo "FILTER_REGEX_INCLUDE='${{ inputs.filter-regex-include }}'" >> $GITHUB_ENV
-          }
-
       # disable non-DevOps focused linters that might run on sample code or 3rd party code
       # these env's will get pass to the next step
       - name: Disable non-DevOps linters
@@ -179,11 +157,22 @@ jobs:
             echo "VALIDATE_ALL_CODEBASE${{ !contains(github.event_name, 'pull_request') }}"
           }
 
+      - name: Determine if this is the main branch (edge case for tagged release workflows)
+        run: |
+          git fetch --all
+          BRANCHES=$(git branch -r --contains "${{ github.sha }}" | sed 's|origin/||')
+          if [[ "${BRANCHES}" == *"main"* ]]; then
+            echo "IS_MAIN_BRANCH=true" >> "$GITHUB_ENV"
+          else
+            echo "IS_MAIN_BRANCH=false" >> "$GITHUB_ENV"
+          fi
+
       #############################
       # Run many Linters against changed files on PRs, and ALL files on commit to release branch
       #############################
       # https://github.com/marketplace/actions/super-linter
       - name: Lint Code Base
+        if: ${{ !(env.IS_MAIN_BRANCH && startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push') }}
         uses: super-linter/super-linter/slim@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -202,6 +191,18 @@ jobs:
           VALIDATE_TYPESCRIPT_STANDARD: false
           VALIDATE_TYPESCRIPT_PRETTIER: false
           VALIDATE_JAVASCRIPT_PRETTIER: false
+          VALIDATE_JSON: false
+          VALIDATE_JSON_PRETTIER: false
+          FIX_JSON_PRETTIER: false
+          VALIDATE_YAML_PRETTIER: false
+          FIX_YAML_PRETTIER: false
+          VALIDATE_MARKDOWN_PRETTIER: false
+          VALIDATE_PYTHON_BLACK: false
+          VALIDATE_PYTHON_FLAKE8: false
+          VALIDATE_PYTHON_ISORT: false
+          VALIDATE_PYTHON_MYPY: false
+          VALIDATE_PYTHON_PYINK: false
+          VALIDATE_PYTHON_RUFF: false
           LINTER_RULES_PATH: .github/linters
-          FILTER_REGEX_EXCLUDE: ${{ env.FILTER_REGEX_EXCLUDE }}
-          FILTER_REGEX_INCLUDE: ${{ env.FILTER_REGEX_INCLUDE }}
+          FILTER_REGEX_EXCLUDE: ${{ inputs.filter-regex-exclude }}
+          FILTER_REGEX_INCLUDE: ${{ inputs.filter-regex-include }}
