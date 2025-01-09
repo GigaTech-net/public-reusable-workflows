@@ -31,7 +31,7 @@ jobs:
     permissions:
       contents: read
       statuses: write
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-super-linter.yaml@pro-660
+    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-super-linter.yaml@PRO-660
     with:
       ### For a DevOps-focused repository. Prevents some code-language linters from running
       ### defaults to false
