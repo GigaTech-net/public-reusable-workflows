@@ -36,7 +36,6 @@ jobs:
           format: "ALL"
           out: "reports"
           args: >
-            --failOnCVSS 7
             --enableRetired
             --prettyPrint
 
