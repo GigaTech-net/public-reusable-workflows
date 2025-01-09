@@ -1,0 +1,145 @@
+---
+name: Metric Quality Gate
+
+on:
+  workflow_call:
+    inputs:
+      lintStatus:
+        required: false
+        type: string
+        description: "string representing status of quality gate, 'success' for passing, anything other string for not passing gate"
+        default: "notchecked"
+      secretScanStatus:
+        required: false
+        type: string
+        description: "string representing status of quality gate, 'success' for passing, anything other string for not passing gate"
+        default: "notchecked"
+      spellcheckStatus:
+        required: false
+        type: string
+        description: "string representing status of quality gate, 'success' for passing, anything other string for not passing gate"
+        default: "notchecked"
+      dependencyStatus:
+        required: false
+        type: string
+        description: "string representing status of quality gate, 'success' for passing, anything other string for not passing gate"
+        default: "notchecked"
+      sourceId:
+        required: true
+        type: string
+        description: "The sourceId of the metric in atlassian compass"
+    outputs:
+      changed_files:
+        description: "the percentage of code quality"
+        value: ${{ jobs.report-code-quality-metric.outputs.changed_files }}
+
+permissions: read-all
+
+env:
+  STEP_VALUE: 25
+
+jobs:
+  report-code-quality-metric:
+    name: Report Code Quality Metric
+    runs-on: ubuntu-latest
+    outputs:
+      changed_files: ${{ steps.dependency_status.outputs.metric_value }}
+    steps:
+      - name: Check lint status
+        run: |
+          # shellcheck disable=SC2086
+          {
+          if [ "${{ inputs.lintStatus }}" == "success" ]; then
+              METRIC_VALUE=${{ env.STEP_VALUE }}
+          elif [ "${{ inputs.lintStatus }}" == "notchecked" ]; then
+              METRIC_VALUE=${{ env.STEP_VALUE }}
+          else
+              METRIC_VALUE=0
+          fi
+
+          {
+              echo 'metric_value<<EOF'
+              echo $METRIC_VALUE
+              echo EOF 
+          } >> $GITHUB_ENV
+          }
+
+      - name: Check secret scan status
+        run: |
+          # shellcheck disable=SC2086
+          {
+            if [ "${{ inputs.secretScanStatus }}" == "success" ]; then
+                METRIC_VALUE=${{ env.STEP_VALUE }}
+            elif [ "${{ inputs.secretScanStatus }}" == "notchecked" ]; then
+                METRIC_VALUE=${{ env.STEP_VALUE }}
+            else
+                METRIC_VALUE=0
+            fi
+
+            METRIC_VALUE=$((METRIC_VALUE + ${{ env.metric_value }}))
+
+            {
+                echo 'metric_value<<EOF'
+                echo $METRIC_VALUE
+                echo EOF 
+            } >> $GITHUB_ENV
+          }
+
+      - name: Check spellcheck status
+        run: |
+          # shellcheck disable=SC2086
+          {
+            if [ "${{ inputs.spellcheckStatus }}" == "success" ]; then
+                METRIC_VALUE=${{ env.STEP_VALUE }}
+            elif [ "${{ inputs.spellcheckStatus }}" == "notchecked" ]; then
+                METRIC_VALUE=${{ env.STEP_VALUE }}
+            else
+                METRIC_VALUE=0
+            fi
+
+            METRIC_VALUE=$((METRIC_VALUE + ${{ env.metric_value }}))
+
+            {
+                echo 'metric_value<<EOF'
+                echo $METRIC_VALUE
+                echo EOF 
+            } >> $GITHUB_ENV
+          }
+
+      - name: Check dependency status
+        id: dependency_status
+        run: |
+          # shellcheck disable=SC2086
+          {
+            if [ "${{ inputs.dependencyStatus }}" == "success" ]; then
+                METRIC_VALUE=${{ env.STEP_VALUE }}
+            elif [ "${{ inputs.dependencyStatus }}" == "notchecked" ]; then
+                METRIC_VALUE=${{ env.STEP_VALUE }}
+            else
+                METRIC_VALUE=0
+            fi
+
+            METRIC_VALUE=$((METRIC_VALUE + ${{ env.metric_value }}))
+
+            {
+                echo 'metric_value<<EOF'
+                echo $METRIC_VALUE
+                echo EOF 
+            } >> $GITHUB_ENV
+          }
+
+      - name: Report code Quality
+        run: |
+          # shellcheck disable=SC2086
+          {
+            curl --request POST \
+                --url https://gigatech-net.atlassian.net/gateway/api/compass/v1/metrics \
+                --user "${{ SECRETS.ATLASSIAN_API_USEREMAIL }}:${{ SECRETS.ATLASSIAN_API_KEY }}" \
+                --header "Accept: application/json" \
+                --header "Content-Type: application/json" \
+                --data "{
+                \"metricSourceId\": \"${{ inputs.sourceId }}\",
+                \"value\": ${{ env.metric_value }},
+                \"timestamp\": \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"
+                }"
+          }
