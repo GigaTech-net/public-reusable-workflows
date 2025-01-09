@@ -11,6 +11,9 @@ links:
   - name: GigaTech-net/reusable-workflows
     type: REPOSITORY
     url: 'https://github.com/GigaTech-net/reusable-workflows'
+  - name: GigaTech-net/public-reusable-workflows
+    type: REPOSITORY
+    url: 'https://github.com/GigaTech-net/public-reusable-workflows'
   - name: Prometheus
     type: PROJECT
     url: 'https://gigatech-net.atlassian.net/browse/PRO'

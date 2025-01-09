@@ -59,6 +59,7 @@ on:
         value: ${{ jobs.check_complexity.outputs.team_members }}
 
 permissions:
+  pull-requests: write
   contents: write
 
 jobs:
