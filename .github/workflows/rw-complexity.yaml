@@ -24,6 +24,11 @@ on:
         type: string
         description: "the team in the GigaTECH-net github repo to use for code reviews"
         default: "GT-dev-randd"
+      internTeam:
+        required: false
+        type: string
+        description: "the team in the GigaTECH-net github for interns"
+        default: "GT-interns-randdd"
       needsReviewLabel:
         required: false
         type: string
