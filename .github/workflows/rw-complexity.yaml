@@ -24,6 +24,11 @@ on:
         type: string
         description: "the team in the GigaTECH-net github repo to use for code reviews"
         default: "GT-dev-randd"
+      internTeam:
+        required: false
+        type: string
+        description: "the team in the GigaTECH-net github for interns"
+        default: "GT-interns-randdd"
       needsReviewLabel:
         required: false
         type: string
@@ -34,6 +39,11 @@ on:
         type: string
         description: "the target branch to check complexity against (ie target of a PR)"
         default: "origin/main"
+      isPullRequest:
+        required: false
+        type: string
+        description: "the call is not a pull request"
+        default: "false"
     outputs:
       changed_files:
         description: "the files that were changed"
@@ -101,6 +111,7 @@ jobs:
             FILES_COMPLEXITY_THRESHOLD=${{ inputs.filesThreshold }}
             LINES_COMPLEXITY_THRESHOLD=${{ inputs.linesThreshold }}
             COMPLEX=false
+            COMPLEX_MSG="Files and Lines thresholds not surpassed."
 
             totalFiles=0
             for FILE in $FILES; do
@@ -111,46 +122,73 @@ jobs:
             done
 
             if [ $totalFiles -gt $FILES_COMPLEXITY_THRESHOLD ]; then
-              echo "Complexity: files threshold($FILES_COMPLEXITY_THRESHOLD) exceeded with $totalFiles files."
+              COMPLEX_MSG="Complexity: files threshold($FILES_COMPLEXITY_THRESHOLD) exceeded with $totalFiles files."
               COMPLEX=true
             elif [ $LINES -gt $LINES_COMPLEXITY_THRESHOLD ]; then
-              echo "Complexity: lines threshold($LINES_COMPLEXITY_THRESHOLD) exceeded with $LINES lines."
+              COMPLEX_MSG="Complexity: lines threshold($LINES_COMPLEXITY_THRESHOLD) exceeded with $LINES lines."
               COMPLEX=true
             fi
 
-            echo "Complex change ===> $COMPLEX"
-            echo "complex=$COMPLEX" >> $GITHUB_OUTPUT
+            echo "Complex change ===> $COMPLEX : MSG ===> $COMPLEX_MSG"
+
+            {
+              echo "complex=$COMPLEX"
+              echo "complex_msg=$COMPLEX_MSG"
+            } >> $GITHUB_OUTPUT
           }
 
-      - name: Add label if complex
-        if: steps.complexity.outputs.complex == 'true'
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          github_token: ${{ secrets.GT_DEVSECOPS_PAT }}
-          labels: ${{ inputs.needsReviewLabel }}
+      - name: Check if user intern
+        id: intern_check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+        run: |
+          # shellcheck disable=SC2086
+          {
+            IS_INTERN=false
+            PR_AUTHOR="${{ github.actor }}"
+            if [ "$PR_AUTHOR" != "dependabot[bot]" ]; then
 
+              INTERN_TEAM=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                https://api.github.com/orgs/${{ github.repository_owner }}/teams/${{ inputs.internTeam }}/members?role=member | jq -r '.[].login')
+
+              if echo "$INTERN_TEAM" | grep -qw "$PR_AUTHOR"; then
+                echo "$PR_AUTHOR is an intern."
+                IS_INTERN=true
+              else
+                echo "$PR_AUTHOR is not a intern."
+              fi
+              echo "is_intern=$IS_INTERN" >> $GITHUB_OUTPUT
+            fi
+          }
+  
       - name: Get team members
-        if: steps.complexity.outputs.complex == 'true'
+        if: steps.complexity.outputs.complex == 'true' || steps.intern_check.outputs.is_intern == 'true'
         id: team_members
+        env:
+          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
         run: |
           # shellcheck disable=SC2086
           {
             PR_AUTHOR="${{ github.actor }}"
-            curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              https://api.github.com/orgs/${{ github.repository_owner }}/teams/${{ inputs.reviewTeam }}/members
-            TEAM_MEMBERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              https://api.github.com/orgs/${{ github.repository_owner }}/teams/${{ inputs.reviewTeam }}/members | jq -r '.[].login')
-            FILTERED_TEAM_MEMBERS=$(echo "$TEAM_MEMBERS" | grep -v "^$PR_AUTHOR" | tr '\n' ' ')
+            GH_TEAM_MEMBERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                https://api.github.com/orgs/${{ github.repository_owner }}/teams/${{ inputs.reviewTeam }}/members)
+
+            if [[ $GH_TEAM_MEMBERS == *"login"* ]]; then
+                TEAM_MEMBERS=$(echo $GH_TEAM_MEMBERS | jq -r '.[].login')
+                FILTERED_TEAM_MEMBERS=$(echo "$TEAM_MEMBERS" | grep -v "^$PR_AUTHOR" | tr '\n' ' ')
+            else
+                echo "Error reading team members from Github!"
+                echo $GH_TEAM_MEMBERS
+                FILTERED_TEAM_MEMBERS=""
+            fi
             {
               echo 'team_members<<EOF'
               echo $FILTERED_TEAM_MEMBERS
               echo EOF
             } >> $GITHUB_OUTPUT
           }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
 
       - name: Request reviews
         if: steps.team_members.outputs.team_members != ''
@@ -166,3 +204,26 @@ jobs:
           }
         env:
           GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+
+      - name: comment pull request not complex
+        if: github.event_name=='pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.payload.pull_request.number,
+              body: 'PR Complexity : ${{ steps.complexity.outputs.complex_msg }} | Intern made change : ${{ steps.intern_check.outputs.is_intern }}'
+            })
+        env:
+          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+
+      - name: Add label if complex
+        if: steps.complexity.outputs.complex == 'true' || steps.intern_check.outputs.is_intern == 'true' && github.event_name=='pull_request'
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          labels: ${{ inputs.needsReviewLabel }}
+          number: ${{ github.event.issue.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+  

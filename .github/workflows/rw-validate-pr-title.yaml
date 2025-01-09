@@ -8,7 +8,7 @@ on:
         description: The regex to use to validate the ticket key in the PR title
         required: false
         type: string
-        default: 'PRO-\d{2,5}'
+        default: '([Pp][Rr][Oo]|[Hh][Oo][Tt][Ff][Ii][Xx])-\d{2,5}'
 
 permissions:
   contents: read
@@ -31,6 +31,9 @@ jobs:
             check_pr_title=true
             if [[ $PR_TITLE == *"bump"* || "${{ github.event.pull_request.user.login }}" == "dependabot[bot]" ]]; then
               echo "PR title contains 'bump' or author is dependabot. Skipping validation."
+              check_pr_title=false
+            elif [[ $PR_TITLE == *"hotfix"* ]]; then
+              echo "PR title contains 'hotfix'. Skipping issue validation."
               check_pr_title=false
             fi
             echo "check_pr_title=${check_pr_title}" >> $GITHUB_OUTPUT
