@@ -1,4 +1,10 @@
 version: 2
+registries:
+  github:
+    type: git
+    url: https://github.com
+    username: x-access-token
+    password: ${{ secrets.GT_DEPENDABOT_PAT }}
 updates:
   # Enable version updates for github actions
   - package-ecosystem: "github-actions"
@@ -7,3 +13,5 @@ updates:
       interval: "weekly"
     target-branch: "main"
     open-pull-requests-limit: 50
+    registries:
+      - github
