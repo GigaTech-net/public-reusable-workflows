@@ -24,7 +24,7 @@ jobs:
       human_review_needed: ${{ steps.check_hrn_label.outputs.human_review_needed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
