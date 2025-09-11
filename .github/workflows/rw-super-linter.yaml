@@ -173,7 +173,7 @@ jobs:
       # https://github.com/marketplace/actions/super-linter
       - name: Lint Code Base
         if: ${{ !(env.IS_MAIN_BRANCH && startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push') }}
-        uses: super-linter/super-linter/slim@v7
+        uses: super-linter/super-linter/slim@v8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # by default super-linter assumes our repo default branch doesn't change
