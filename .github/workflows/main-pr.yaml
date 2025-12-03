@@ -42,7 +42,7 @@ jobs:
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       # Combined setup, checkout, version detection, and branch extraction
