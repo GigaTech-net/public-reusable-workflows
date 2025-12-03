@@ -67,16 +67,6 @@ jobs:
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
 
-      - name: dependency check
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/dependency-check@main
-        id: dependency-check
-        with:
-          artifact_name: ${{ env.ARTIFACT_NAME }}-${{ github.sha }}
-          retention_days: ${{ env.RETENTION_DAYS }}
-          working_directory: "."
-          oss_index_user: ${{ secrets.SONATYPE_OSS_INDEX_USER }}
-          oss_index_api_token: ${{ secrets.SONATYPE_OSS_INDEX_API_TOKEN }}
-
   complexity:
     name: Check Complexity
     needs: quality-checks
