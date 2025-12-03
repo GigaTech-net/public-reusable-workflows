@@ -20,7 +20,8 @@ concurrency:
 
 env:
   NEEDS_REVIEW_LABEL: "needs-human-review"
-
+  ARTIFACT_NAME: "vulnerability_rpt"
+  RETENTION_DAYS: 1
 jobs:
   # Efficient combined job using composite actions for quick checks
   quality-checks:

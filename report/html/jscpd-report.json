@@ -1,6 +1,6 @@
 {
   "statistics": {
-    "detectionDate": "2025-12-03T18:56:13.213Z",
+    "detectionDate": "2025-12-03T19:50:17.500Z",
     "formats": {
       "css": {
         "sources": {
@@ -61,8 +61,8 @@
       "json": {
         "sources": {
           "/tmp/lint/report/html/jscpd-report.json": {
-            "lines": 48,
-            "tokens": 296,
+            "lines": 188,
+            "tokens": 1176,
             "sources": 1,
             "clones": 0,
             "duplicatedLines": 0,
@@ -74,8 +74,8 @@
           }
         },
         "total": {
-          "lines": 48,
-          "tokens": 296,
+          "lines": 188,
+          "tokens": 1176,
           "sources": 1,
           "clones": 0,
           "duplicatedLines": 0,
@@ -90,7 +90,7 @@
         "sources": {
           "/tmp/lint/report/html/index.html": {
             "lines": 8,
-            "tokens": 862,
+            "tokens": 1592,
             "sources": 1,
             "clones": 0,
             "duplicatedLines": 0,
@@ -103,7 +103,7 @@
         },
         "total": {
           "lines": 8,
-          "tokens": 862,
+          "tokens": 1592,
           "sources": 1,
           "clones": 0,
           "duplicatedLines": 0,
@@ -117,8 +117,8 @@
       "markdown": {
         "sources": {
           "/tmp/lint/report/jscpd-report.md": {
-            "lines": 5,
-            "tokens": 181,
+            "lines": 10,
+            "tokens": 351,
             "sources": 1,
             "clones": 0,
             "duplicatedLines": 0,
@@ -130,8 +130,8 @@
           }
         },
         "total": {
-          "lines": 5,
-          "tokens": 181,
+          "lines": 10,
+          "tokens": 351,
           "sources": 1,
           "clones": 0,
           "duplicatedLines": 0,
@@ -146,7 +146,7 @@
         "sources": {
           "/tmp/lint/compass.yml": {
             "lines": 28,
-            "tokens": 205,
+            "tokens": 207,
             "sources": 1,
             "clones": 0,
             "duplicatedLines": 0,
@@ -159,7 +159,7 @@
         },
         "total": {
           "lines": 28,
-          "tokens": 205,
+          "tokens": 207,
           "sources": 1,
           "clones": 0,
           "duplicatedLines": 0,
@@ -172,8 +172,8 @@
       }
     },
     "total": {
-      "lines": 111,
-      "tokens": 6356,
+      "lines": 256,
+      "tokens": 8138,
       "sources": 6,
       "clones": 0,
       "duplicatedLines": 0,
