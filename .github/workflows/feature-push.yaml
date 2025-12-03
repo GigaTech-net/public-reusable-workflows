@@ -33,7 +33,7 @@ jobs:
       NEEDS_REVIEW_LABEL: ${{ env.NEEDS_REVIEW_LABEL }}
     steps:
       - name: Setup GitHub token
-        uses: GigaTech-net/reusable-workflows/.github/actions/setup-token@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
         with:
           app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
@@ -46,29 +46,29 @@ jobs:
       - name: Setup workflow environment
         id: setup
         uses: >-
-          GigaTech-net/reusable-workflows/.github/actions/setup-workflow@main
+          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@main
 
       # Secret scan using composite action
       - name: Secret scan
         uses: >-
-          GigaTech-net/reusable-workflows/.github/actions/secret-scan@main
+          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@main
 
       # Spellcheck using composite action
       - name: Spellcheck
         uses: >-
-          GigaTech-net/reusable-workflows/.github/actions/spellcheck@main
+          GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@main
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
 
       # Super Linter using composite action
       - name: Super Linter
-        uses: GigaTech-net/reusable-workflows/.github/actions/super-linter@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/super-linter@main
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
           run_local: false
 
       - name: dependency check
-        uses: GigaTech-net/reusable-workflows/.github/actions/dependency-check@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/dependency-check@main
         id: dependency-check
         with:
           artifact_name: ${{ env.ARTIFACT_NAME }}-${{ github.sha }}

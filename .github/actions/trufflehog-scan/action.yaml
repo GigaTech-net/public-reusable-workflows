@@ -1,0 +1,49 @@
+name: "TruffleHog Scan"
+description: "Performs TruffleHog OSS scan to detect leaked credentials and secrets (deprecated)"
+author: "GigaTech"
+
+inputs:
+  scan_path:
+    description: "Path to scan for secrets"
+    required: false
+    default: "./"
+  base_ref:
+    description: "Base reference for scanning"
+    required: false
+    default: ""
+  head_ref:
+    description: "Head reference for scanning"
+    required: false
+    default: "${{ github.ref_name }}"
+  extra_args:
+    description: "Extra arguments for TruffleHog"
+    required: false
+    default: "--debug --json --only-verified"
+
+outputs:
+  scan_status:
+    description: "Status of the TruffleHog scan"
+    value: ${{ steps.scan.outcome }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Display deprecation warning
+      shell: bash
+      run: |
+        echo "⚠️  WARNING: This TruffleHog scan action is deprecated."
+        echo "🔄 Please use the secret-scan action instead:"
+        echo "   uses: GigaTech-net/reusable-workflows/.github/actions/secret-scan@main"
+
+    - name: Confirm correct branch to scan
+      shell: bash
+      run: echo "Preparing to scan branch ${{ inputs.head_ref }}"
+
+    - name: Perform TruffleHog scan to detect leaked credentials & secrets
+      id: scan
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ${{ inputs.scan_path }}
+        base: ${{ inputs.base_ref }}
+        head: ${{ inputs.head_ref }}
+        extra_args: ${{ inputs.extra_args }}

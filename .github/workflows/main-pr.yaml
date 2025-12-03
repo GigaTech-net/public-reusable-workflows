@@ -35,7 +35,7 @@ jobs:
       NEEDS_REVIEW_LABEL: ${{ env.NEEDS_REVIEW_LABEL }}
     steps:
       - name: Setup GitHub token
-        uses: GigaTech-net/reusable-workflows/.github/actions/setup-token@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
         with:
           app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
@@ -48,26 +48,26 @@ jobs:
       - name: Setup workflow environment
         id: setup
         uses: >-
-          GigaTech-net/reusable-workflows/.github/actions/setup-workflow@main
+          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@main
 
       # Validate PR title using composite action
       - name: Validate PR title
         uses: >-
-          GigaTech-net/reusable-workflows/.github/actions/validate-pr-title@main
+          GigaTech-net/public-reusable-workflows/.github/actions/validate-pr-title@main
 
       # Secret scan using composite action
       - name: Secret scan
         uses: >-
-          GigaTech-net/reusable-workflows/.github/actions/secret-scan@main
+          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@main
 
       # Spellcheck using composite action
       - name: Spellcheck
-        uses: GigaTech-net/reusable-workflows/.github/actions/spellcheck@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@main
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
 
       - name: dependency check
-        uses: GigaTech-net/reusable-workflows/.github/actions/dependency-check@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/dependency-check@main
         id: dependency-check
         with:
           artifact_name: ${{ env.ARTIFACT_NAME }}-${{ github.sha }}
@@ -83,7 +83,7 @@ jobs:
       contents: write
       pull-requests: write
     uses: >-
-      GigaTech-net/reusable-workflows/.github/workflows/rw-complexity.yaml@main
+      GigaTech-net/public-reusable-workflows/.github/workflows/rw-complexity.yaml@main
     with:
       needsReviewLabel: >-
         ${{ needs.quality-checks.outputs.NEEDS_REVIEW_LABEL }}
@@ -94,7 +94,7 @@ jobs:
     needs: [quality-checks, complexity]
     permissions: read-all
     uses: >-
-      GigaTech-net/reusable-workflows/.github/workflows/rw-checkreview.yaml@main
+      GigaTech-net/public-reusable-workflows/.github/workflows/rw-checkreview.yaml@main
     with:
       needsReviewLabel: ${{ needs.quality-checks.outputs.NEEDS_REVIEW_LABEL }}
     secrets: inherit
@@ -108,7 +108,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Setup GitHub token
-        uses: GigaTech-net/reusable-workflows/.github/actions/setup-token@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
         with:
           app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}

@@ -1,0 +1,84 @@
+---
+name: Generate Global Vars
+description: Generates global_vars.hcl using pm-infrastructure-shared script
+author: GigaTech DevSecOps
+
+inputs:
+  prefix:
+    description: Resource name prefix
+    required: true
+  createdby:
+    description: Created by value
+    required: true
+  createdbytag:
+    description: Created by tag
+    required: true
+  costcentertag:
+    description: Cost center tag
+    required: true
+  appnametag:
+    description: Application name tag
+    required: true
+  envnametag:
+    description: Environment name tag
+    required: true
+  gt_fhir_domain:
+    description: GigaTech FHIR domain
+    required: true
+  gt_api_domain:
+    description: GigaTech API domain
+    required: false
+    default: api.gigatech.net
+  pm_gateway_domain:
+    description: PM Gateway domain
+    required: true
+  target_dir:
+    description: Target directory where global_vars.hcl will be written (trailing slash if desired)
+    required: true
+  github_token:
+    description: GitHub Token
+    required: true
+
+outputs:
+  output-path:
+    description: Full path to generated global_vars.hcl
+    value: ${{ steps.debug-output.outputs.output-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout script repository
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+        repository: GigaTech-net/pm-infrastructure-shared
+        path: script
+        ref: main
+        token: ${{ inputs.github_token }} # Explicitly pass the token
+
+    - name: Make script executable
+      shell: bash
+      run: chmod +x ./script/gen_global_vars.sh
+
+    - name: Run generation script
+      shell: bash
+      env:
+        PREFIX: ${{ inputs.prefix }}
+        CREATEDBY: ${{ inputs.createdby }}
+        CREATEDBYTAG: ${{ inputs.createdbytag }}
+        COSTCENTERTAG: ${{ inputs.costcentertag }}
+        APPNAMETAG: ${{ inputs.appnametag }}
+        ENVNAMETAG: ${{ inputs.envnametag }}
+        GT_FHIR_DOMAIN: ${{ inputs.gt_fhir_domain }}
+        GT_API_DOMAIN: ${{ inputs.gt_api_domain }}
+        PM_GATEWAY_DOMAIN: ${{ inputs.pm_gateway_domain }}
+        TARGET_DIR: ${{ inputs.target_dir }}
+      run: ./script/gen_global_vars.sh
+
+    - name: Debug output file
+      id: debug-output
+      shell: bash
+      run: |
+        echo "=== Contents of global_vars.hcl ==="
+        cat "${{ inputs.target_dir }}global_vars.hcl" || echo "File not found"
+        echo "output-path=${{ inputs.target_dir }}global_vars.hcl" >> $GITHUB_OUTPUT
