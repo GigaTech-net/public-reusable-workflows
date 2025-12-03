@@ -1,0 +1,34 @@
+---
+name: Secret Scan
+description: |
+  Composite action that performs secret scanning using TruffleHog.
+  This replaces the rw-secret-scan.yaml reusable workflow to improve efficiency by running on the same runner.
+
+inputs:
+  path:
+    description: "Path to scan for secrets"
+    required: false
+    default: "./"
+  head:
+    description: "The head reference to scan"
+    required: false
+    default: ""
+  extra_args:
+    description: "Extra arguments to pass to TruffleHog"
+    required: false
+    default: "--debug --json --only-verified"
+
+runs:
+  using: composite
+  steps:
+    - name: Confirm correct branch to scan
+      shell: bash
+      run: echo "Preparing to scan branch ${{ github.ref_name }}"
+
+    - name: Perform scan to detect leaked credentials & secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ${{ inputs.path }}
+        base: ""
+        head: ${{ inputs.head || github.ref_name }}
+        extra_args: ${{ inputs.extra_args }}

@@ -1,4 +1,5 @@
 ---
+# Optimized workflow using composite actions for improved efficiency
 name: Feature Push workflow
 
 on:
@@ -8,45 +9,70 @@ on:
       - "!main"
 
 permissions:
-  actions: read
-  checks: read
-  contents: write
-  deployments: read
-  issues: read
-  discussions: read
-  packages: read
-  pages: read
-  pull-requests: read
-  repository-projects: read
-  security-events: read
-  statuses: write
+  contents: read
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
+env:
+  NEEDS_REVIEW_LABEL: "needs-human-review"
 
 jobs:
-  lint:
-    name: Lint Code Base
+  quality-checks:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       statuses: write
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-super-linter.yaml@main
-    with:
-      ### For a DevOps-focused repository. Prevents some code-language linters from running
-      ### defaults to false
-      devops-only: false
-      ### A regex to exclude files from linting
-      ### defaults to empty
-      # filter-regex-exclude: html/.*
+    outputs:
+      current-version: ${{ steps.setup.outputs.current-version }}
+      current-v-version: ${{ steps.setup.outputs.current-v-version }}
+      version: ${{ steps.setup.outputs.version }}
+      v-version: ${{ steps.setup.outputs.v-version }}
+      pre-release-label: ${{ steps.setup.outputs.pre-release-label }}
+      branch: ${{ steps.setup.outputs.branch }}
+      NEEDS_REVIEW_LABEL: ${{ env.NEEDS_REVIEW_LABEL }}
+    steps:
+      - name: Setup GitHub token
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
 
-  secret-scan:
-    name: Secret Scan
-    permissions: read-all
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-secret-scan.yaml@main
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # Combined setup, checkout, version detection, and branch extraction
+      - name: Setup workflow environment
+        id: setup
+        uses: >-
+          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@main
 
-  spellcheck:
-    name: Spellcheck codebase
-    permissions:
-      contents: write
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-spellcheck.yaml@main
+      # Secret scan using composite action
+      - name: Secret scan
+        uses: >-
+          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@main
+
+      # Spellcheck using composite action
+      - name: Spellcheck
+        uses: >-
+          GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@main
+        with:
+          github_token: ${{ env.GITHUB_TOKEN }}
+
+      # Super Linter using composite action
+      - name: Super Linter
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/super-linter@main
+        with:
+          github_token: ${{ env.GITHUB_TOKEN }}
+          run_local: false
+
+      - name: dependency check
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/dependency-check@main
+        id: dependency-check
+        with:
+          artifact_name: ${{ env.ARTIFACT_NAME }}-${{ github.sha }}
+          retention_days: ${{ env.RETENTION_DAYS }}
+          working_directory: "."
+          oss_index_user: ${{ secrets.SONATYPE_OSS_INDEX_USER }}
+          oss_index_api_token: ${{ secrets.SONATYPE_OSS_INDEX_API_TOKEN }}

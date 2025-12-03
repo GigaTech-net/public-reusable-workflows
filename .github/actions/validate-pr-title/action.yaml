@@ -1,0 +1,50 @@
+---
+name: Validate PR Title
+description: |
+  Composite action that validates PR titles against conventional commit standards.
+  This replaces the rw-validate-pr-title.yaml reusable workflow to improve efficiency by running on the same runner.
+
+inputs:
+  ticket_key_regex:
+    description: "The regex to use to validate the ticket key in the PR title"
+    required: false
+    default: '(([Pp][Rr][Oo]|[Hh][Oo][Tt][Ff][Ii][Xx])-\d{2,5}|maint|hotfix)'
+  pr_title:
+    description: "The PR title to validate"
+    required: false
+    default: "${{ github.event.pull_request.title }}"
+  pr_author:
+    description: "The PR author login"
+    required: false
+    default: "${{ github.event.pull_request.user.login }}"
+
+runs:
+  using: composite
+  steps:
+    - name: Check PR conditions
+      id: check_conditions
+      shell: bash
+      run: |
+        # shellcheck disable=SC2116,SC2016,SC2086
+        {
+          check_pr_title=true
+          if [[ $PR_TITLE == *"bump"* || "$PR_AUTHOR" == "dependabot[bot]" ]]; then
+            echo "PR title contains 'bump' or author is dependabot. Skipping issue validation."
+            check_pr_title=false
+          elif [[ $PR_TITLE == *"hotfix"* ]]; then
+            echo "PR title contains 'hotfix'. Skipping issue validation."
+            check_pr_title=false
+          fi
+          echo "check_pr_title=${check_pr_title}" >> $GITHUB_OUTPUT
+        }
+      env:
+        PR_TITLE: ${{ inputs.pr_title }}
+        PR_AUTHOR: ${{ inputs.pr_author }}
+
+    - name: validate-pr-title
+      uses: ytanikin/PRConventionalCommits@1.3.0
+      if: steps.check_conditions.outputs.check_pr_title == 'true'
+      with:
+        task_types: '["feat","fix","docs","test","ci","refactor","perf","chore","revert"]'
+        ticket_key_regex: ${{ inputs.ticket_key_regex }}
+        add_label: "false"

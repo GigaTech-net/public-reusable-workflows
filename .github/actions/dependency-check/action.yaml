@@ -1,0 +1,54 @@
+name: "Dependency Check"
+description: "Performs OWASP dependency vulnerability scanning and uploads results as artifacts"
+author: "GigaTech"
+
+inputs:
+  artifact_name:
+    description: "The artifact name to write to GitHub blob storage after this action completes"
+    required: false
+    default: "vulnerability_rpt"
+  retention_days:
+    description: "The number of days to retain the artifact in GitHub blob storage after this action completes"
+    required: false
+    default: "1"
+  working_directory:
+    description: "Working directory for the action"
+    required: false
+    default: "."
+  oss_index_user:
+    description: "OSS Index user"
+    required: true
+  oss_index_api_token:
+    description: "OSS Index API token"
+    required: true
+
+outputs:
+  artifact_name:
+    description: "The name of the uploaded artifact"
+    value: ${{ steps.upload.outputs.artifact-id }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run dependency check
+      id: dependency-check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: ${{ github.repository }}
+        path: ${{ inputs.working_directory }}
+        format: "ALL"
+        out: "reports"
+        args: >
+          --enableRetired
+          --prettyPrint
+          --ossIndexUsername ${{ inputs.oss_index_user }}
+          --ossIndexPassword ${{ inputs.oss_index_api_token }}
+
+    - name: Upload dependency check results as artifact
+      if: always()
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}-${{ github.sha }}
+        path: ${{ github.workspace }}/reports
+        retention-days: ${{ inputs.retention_days }}

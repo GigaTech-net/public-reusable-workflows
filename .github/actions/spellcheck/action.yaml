@@ -1,0 +1,77 @@
+---
+name: Spellcheck
+description: |
+  Composite action that performs spellcheck with automatic corrections.
+  This replaces the rw-spellcheck.yaml reusable workflow to improve efficiency by running on the same runner.
+
+inputs:
+  wordsToIgnore:
+    description: "Comma separated words to ignore spellchecking"
+    required: false
+    default: ""
+  filesToIgnore:
+    description: "Comma separated file names to ignore spellchecking"
+    required: false
+    default: ""
+  github_token:
+    description: "GitHub token for committing changes"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Extract branch name
+      id: extract_branch
+      shell: bash
+      run: |
+        # shellcheck disable=SC2116,SC2016,SC2086
+        {
+          echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+        }
+
+    - name: Install codespell
+      shell: bash
+      run: |
+        {
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install codespell
+        }
+
+    - name: Unpack and use codespell autocorrect dictionary
+      shell: bash
+      run: wget https://raw.githubusercontent.com/codespell-project/codespell/master/codespell_lib/data/dictionary.txt
+
+    - name: Run spellcheck
+      shell: bash
+      run: |
+        {
+          source venv/bin/activate
+          codespell \
+            -D dictionary.txt \
+            --count \
+            --quiet-level 2 \
+            --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,.gitignore,./src,./venv,.dockerignore,Dockerfile,package.json,package-lock.json,${{ inputs.filesToIgnore }}" \
+            -L ehr,requestor,promis,loinc,recengine,sdvosb,${{ inputs.wordsToIgnore }} \
+            --write-changes
+          rm dictionary.txt
+        }
+
+    - name: Commit changes
+      if: steps.extract_branch.outputs.branch != ''
+      shell: bash
+      run: |
+        {
+          BRANCH_NAME=${{ steps.extract_branch.outputs.branch }}
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff-index --quiet HEAD --; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix: automatic spelling correction on branch $BRANCH_NAME"
+            git push origin $BRANCH_NAME
+          fi
+        }
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
