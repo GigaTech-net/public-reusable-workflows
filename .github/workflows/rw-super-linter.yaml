@@ -1,7 +1,7 @@
 ---
-  # Documentation: https://help.github.com/en/articles/workflow-syntax-for-github-actions
-  # Original template from: https://github.com/bretfisher/super-linter-workflow/blob/main/.github/workflows/reusable-super-linter.yaml
-  
+# Documentation: https://help.github.com/en/articles/workflow-syntax-for-github-actions
+# Original template from: https://github.com/bretfisher/super-linter-workflow/blob/main/.github/workflows/reusable-super-linter.yaml
+
 name: Lint all the codes
 
 #

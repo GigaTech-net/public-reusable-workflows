@@ -1,22 +1,22 @@
 name: public-reusable-workflows
-id: 'ari:cloud:compass:c5f85481-25ba-4ff0-afac-a4bc0082db80:component/0938370a-36b8-4157-8b2d-4cd87e26cf36/24edb3c3-f794-4cf7-aeea-f516441eb270'
+id: "ari:cloud:compass:c5f85481-25ba-4ff0-afac-a4bc0082db80:component/0938370a-36b8-4157-8b2d-4cd87e26cf36/24edb3c3-f794-4cf7-aeea-f516441eb270"
 description: GigaTECH's reusable workflows that are exposed publicly
 configVersion: 1
 typeId: LIBRARY
-ownerId: 'ari:cloud:identity::team/a651c3c2-ee0e-4961-bb46-4c2acd8dea90'
+ownerId: "ari:cloud:identity::team/a651c3c2-ee0e-4961-bb46-4c2acd8dea90"
 fields:
   lifecycle: Active
   tier: 1
 links:
   - name: GigaTech-net/reusable-workflows
     type: REPOSITORY
-    url: 'https://github.com/GigaTech-net/reusable-workflows'
+    url: "https://github.com/GigaTech-net/reusable-workflows"
   - name: GigaTech-net/public-reusable-workflows
     type: REPOSITORY
-    url: 'https://github.com/GigaTech-net/public-reusable-workflows'
+    url: "https://github.com/GigaTech-net/public-reusable-workflows"
   - name: Prometheus
     type: PROJECT
-    url: 'https://gigatech-net.atlassian.net/browse/PRO'
+    url: "https://gigatech-net.atlassian.net/browse/PRO"
   - name: DevSecOps Chat
     type: CHAT_CHANNEL
     url: >-

@@ -162,7 +162,7 @@ jobs:
               echo "is_intern=$IS_INTERN" >> $GITHUB_OUTPUT
             fi
           }
-  
+
       - name: Get team members
         if: steps.complexity.outputs.complex == 'true' || steps.intern_check.outputs.is_intern == 'true'
         id: team_members
@@ -227,4 +227,3 @@ jobs:
           number: ${{ github.event.issue.number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
-  

@@ -9,20 +9,11 @@ on:
       - master
 
 permissions:
-  actions: read
-  checks: read
-  contents: write
-  deployments: read
-  issues: read
-  discussions: read
-  packages: read
-  pages: read
-  pull-requests: write
-  repository-projects: read
-  security-events: read
-  statuses: write
+  contents: read
+  pull-requests: read
 
-# cancel any previously-started, yet still active runs of this workflow on the same branch
+# cancel any previously-started, yet still active runs of this workflow
+# on the same branch
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
@@ -31,87 +22,109 @@ env:
   NEEDS_REVIEW_LABEL: "needs-human-review"
 
 jobs:
-  validate-pr-title:
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-validate-pr-title.yaml@main
-    with:
-      ticket_key_regex: '([Hh][Oo][Tt][Ff][Ii][Xx]|([Pp][Rr][Oo])-\d{1,5})'
-
-  checkout:
+  # Efficient combined job using composite actions for quick checks
+  quality-checks:
     runs-on: ubuntu-latest
-    needs: validate-pr-title
     outputs:
+      current-version: ${{ steps.setup.outputs.current-version }}
+      current-v-version: ${{ steps.setup.outputs.current-v-version }}
+      version: ${{ steps.setup.outputs.version }}
+      v-version: ${{ steps.setup.outputs.v-version }}
+      pre-release-label: ${{ steps.setup.outputs.pre-release-label }}
+      branch: ${{ steps.setup.outputs.branch }}
       NEEDS_REVIEW_LABEL: ${{ env.NEEDS_REVIEW_LABEL }}
     steps:
-      - name: Checkout code
+      - name: Setup GitHub token
+        uses: GigaTech-net/reusable-workflows/.github/actions/setup-token@main
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
+      - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      # Combined setup, checkout, version detection, and branch extraction
+      - name: Setup workflow environment
+        id: setup
+        uses: >-
+          GigaTech-net/reusable-workflows/.github/actions/setup-workflow@main
 
-  lint:
-    name: Lint Code Base
-    needs: checkout
-    permissions:
-      contents: read
-      statuses: write
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-super-linter.yaml@main
-    with:
-      ### For a DevOps-focused repository. Prevents some code-language linters from running
-      ### defaults to false
-      devops-only: false
-      ### A regex to exclude files from linting
-      ### defaults to empty
-      # filter-regex-exclude: html/.*
+      # Validate PR title using composite action
+      - name: Validate PR title
+        uses: >-
+          GigaTech-net/reusable-workflows/.github/actions/validate-pr-title@main
 
-  secret-scan:
-    name: Secret Scan
-    needs: checkout
-    permissions: read-all
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-secret-scan.yaml@main
+      # Secret scan using composite action
+      - name: Secret scan
+        uses: >-
+          GigaTech-net/reusable-workflows/.github/actions/secret-scan@main
 
-  spellcheck:
-    name: Spellcheck codebase
-    needs: checkout
-    permissions:
-      contents: write
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-spellcheck.yaml@main
+      # Spellcheck using composite action
+      - name: Spellcheck
+        uses: GigaTech-net/reusable-workflows/.github/actions/spellcheck@main
+        with:
+          github_token: ${{ env.GITHUB_TOKEN }}
 
-  report-code-quality-metric:
-    name: Report Code Quality Metric
-    needs: [lint, secret-scan, spellcheck]
-    if: always()
-    permissions: read-all
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-metric-quality-gate.yaml@main
-    secrets: inherit
-    with:
-      lintStatus: ${{ needs.lint.result }}
-      secretScanStatus: ${{ needs.secret-scan.result }}
-      spellcheckStatus: ${{ needs.spellcheck.result }}
-      sourceId: "ari:cloud:compass:c5f85481-25ba-4ff0-afac-a4bc0082db80:metric-source/0938370a-36b8-4157-8b2d-4cd87e26cf36/ce5dd0e4-7300-4b94-9e00-e6359d95a335"
-  
+      - name: dependency check
+        uses: GigaTech-net/reusable-workflows/.github/actions/dependency-check@main
+        id: dependency-check
+        with:
+          artifact_name: ${{ env.ARTIFACT_NAME }}-${{ github.sha }}
+          retention_days: ${{ env.RETENTION_DAYS }}
+          working_directory: "."
+          oss_index_user: ${{ secrets.SONATYPE_OSS_INDEX_USER }}
+          oss_index_api_token: ${{ secrets.SONATYPE_OSS_INDEX_API_TOKEN }}
+
   complexity:
     name: Check Complexity
-    needs: checkout
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-complexity.yaml@main
+    needs: quality-checks
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: >-
+      GigaTech-net/reusable-workflows/.github/workflows/rw-complexity.yaml@main
     with:
-      needsReviewLabel: ${{ needs.checkout.outputs.NEEDS_REVIEW_LABEL }}
+      needsReviewLabel: >-
+        ${{ needs.quality-checks.outputs.NEEDS_REVIEW_LABEL }}
     secrets: inherit
 
   human-review:
     name: Check if human review is needed
-    needs: [checkout, complexity]
+    needs: [quality-checks, complexity]
     permissions: read-all
-    uses: GigaTech-net/public-reusable-workflows/.github/workflows/rw-checkreview.yaml@main
+    uses: >-
+      GigaTech-net/reusable-workflows/.github/workflows/rw-checkreview.yaml@main
     with:
-      needsReviewLabel: ${{ needs.checkout.outputs.NEEDS_REVIEW_LABEL }}
+      needsReviewLabel: ${{ needs.quality-checks.outputs.NEEDS_REVIEW_LABEL }}
     secrets: inherit
 
   enable-auto-merge:
     name: Enable Auto Merge
-    needs: [human-review, lint, secret-scan, spellcheck]
+    needs: [human-review, quality-checks, complexity]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: set to auto merge if human review is not needed (not dependabot)
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
+      - name: Setup GitHub token
+        uses: GigaTech-net/reusable-workflows/.github/actions/setup-token@main
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
+      - name: Debug - Show conditions
+        run: |
+          echo "PR Author: ${{ github.event.pull_request.user.login }}"
+          human_review="${{ needs.human-review.outputs.human_review_needed }}"
+          echo "Human review needed: $human_review"
+          echo "Complexity result: ${{ needs.complexity.outputs.complex }}"
+          echo "Quality checks result: ${{ needs.quality-checks.result }}"
+
+      - name: Enable auto merge for regular PRs (not dependabot)
+        if: |
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          needs.human-review.outputs.human_review_needed == 'false'
         run: |
           {
             gh pr merge --auto --merge "$PR_URL"
@@ -120,24 +133,64 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
 
-      - name: set to auto merge if human review is not needed (dependabot)
-        if: github.event.pull_request.user.login == 'dependabot[bot]'
+      - name: Enable auto merge for dependabot PRs meeting conditions
+        if: |
+          github.event.pull_request.user.login == 'dependabot[bot]' &&
+          (needs.complexity.outputs.complex == 'false' ||
+            needs.complexity.outputs.complex == '') &&
+          needs.human-review.outputs.human_review_needed == 'false' &&
+          needs.quality-checks.result == 'success'
         run: |
           {
+            echo "✅ Dependabot PR meets auto-merge criteria:"
+            echo "  - Not complex (files < 6, lines < 200)"
+            echo "  - No human review needed"
+            echo "  - Quality checks passed"
             gh pr merge --auto --merge "$PR_URL"
           }
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Dependabot PR requires manual review
+        if: |
+          github.event.pull_request.user.login == 'dependabot[bot]' &&
+          (needs.complexity.outputs.complex == 'true' ||
+            needs.human-review.outputs.human_review_needed == 'true' ||
+            needs.quality-checks.result != 'success')
+        run: |
+          {
+            echo "⚠️  Dependabot PR requires manual review due to:"
+            echo "  - Complex: ${{ needs.complexity.outputs.complex }}"
+            human_review="${{ needs.human-review.outputs.human_review_needed }}"
+            echo "  - Human review needed: $human_review"
+            echo "  - Quality checks result: ${{ needs.quality-checks.result }}"
+            echo ""
+            echo "Auto-merge skipped for safety."
+          }
+
   auto-approve:
     name: Auto approve PR
-    needs: [human-review, lint, secret-scan, spellcheck]
+    needs: [human-review, quality-checks, complexity]
     runs-on: ubuntu-latest
-    if: needs.human-review.outputs.human_review_needed == 'false'
+    permissions:
+      pull-requests: write
+    if: |
+      needs.human-review.outputs.human_review_needed == 'false' &&
+      (needs.complexity.outputs.complex == 'false' ||
+       needs.complexity.outputs.complex == '') &&
+      needs.quality-checks.result == 'success'
     steps:
-      - name: Approve the PR if human review not needed
-        run: gh pr review --approve "$PR_URL"
+      - name: Setup GitHub token
+        uses: GigaTech-net/reusable-workflows/.github/actions/setup-token@main
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
+      - name: Approve the PR if auto-merge criteria met
+        run: |
+          echo "✅ Auto-approving PR - all conditions met"
+          gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
