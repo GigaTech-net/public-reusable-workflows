@@ -16,7 +16,8 @@ concurrency:
   cancel-in-progress: true
 env:
   NEEDS_REVIEW_LABEL: "needs-human-review"
-
+  ARTIFACT_NAME: "vulnerability_rpt"
+  RETENTION_DAYS: 1
 jobs:
   quality-checks:
     runs-on: ubuntu-latest
