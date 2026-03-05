@@ -129,6 +129,8 @@ jobs:
           # shellcheck disable=2086
           { 
             echo "VALIDATE_BASH=false";
+            echo "VALIDATE_BIOME_FORMAT=false";
+            echo "VALIDATE_BIOME_LINT=false";
             echo "VALIDATE_SHELL_SHFMT=false";
             echo "VALIDATE_EDITORCONFIG=false";
             echo "VALIDATE_CLOUDFORMATION=false";
@@ -142,6 +144,7 @@ jobs:
             echo "VALIDATE_CHECKOV=false";
             echo "VALIDATE_JAVASCRIPT_STANDARD=false";
             echo "VALIDATE_TERRAFORM_TFLINT=false";
+            echo "VALIDATE_TRIVY=false";
             echo "VALIDATE_JSON_PRETTIER=false";
             echo "VALIDATE_MARKDOWN_PRETTIER=false";
             echo "VALIDATE_YAML_PRETTIER=false";
