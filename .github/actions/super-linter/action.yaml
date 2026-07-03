@@ -41,7 +41,7 @@ runs:
         fi
 
     - name: Run Super Linter
-      uses: super-linter/super-linter/slim@v8
+      uses: super-linter/super-linter/slim@v8.6.0
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         RUN_LOCAL: ${{ inputs.run_local }}
