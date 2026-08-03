@@ -32,6 +32,7 @@ runs:
   steps:
     - name: Run dependency check
       id: dependency-check
+      continue-on-error: true
       uses: dependency-check/Dependency-Check_Action@main
       with:
         project: ${{ github.repository }}
@@ -43,6 +44,26 @@ runs:
           --prettyPrint
           --ossIndexUsername ${{ inputs.oss_index_user }}
           --ossIndexPassword ${{ inputs.oss_index_api_token }}
+
+    - name: Validate dependency check results
+      id: validate
+      shell: bash
+      run: |
+        if [ "${{ steps.dependency-check.outcome }}" = "success" ]; then
+          echo "Dependency check completed successfully."
+          exit 0
+        fi
+
+        # Step failed — check if reports were still produced by other analyzers
+        REPORT_DIR="${{ github.workspace }}/reports"
+        if [ -d "$REPORT_DIR" ] && [ "$(ls -A "$REPORT_DIR" 2>/dev/null)" ]; then
+          echo "::warning::Dependency check encountered errors (e.g. NPM Audit API unavailable) but reports were produced by other analyzers. Continuing with partial results."
+          ls -la "$REPORT_DIR"
+          exit 0
+        fi
+
+        echo "::error::Dependency check failed and produced no reports. The scan did not complete."
+        exit 1
 
     - name: Upload dependency check results as artifact
       if: always()

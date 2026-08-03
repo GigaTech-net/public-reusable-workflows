@@ -1,0 +1,405 @@
+---
+name: PR Gate
+description: |
+  Composite action that decides whether a pull request is eligible for automated
+  approval and merge. Replaces the rw-checkreview.yaml and rw-complexity.yaml
+  reusable workflows.
+
+  Runs as steps inside the caller's job, so the caller's permissions: block
+  governs it. Requires:
+    pull-requests: write   (to read files/labels and post the decision comment)
+
+  FAILS CLOSED. Any error, missing signal, or unreadable API response results in
+  auto_approve_eligible=false. The workflows this replaces did the opposite:
+  a failed label lookup left human_review_needed empty, which callers compared
+  against 'false' and treated as "no review needed".
+
+inputs:
+  github_token:
+    description: |
+      Token used for all API calls. Must be able to read organization team
+      membership, so the default GITHUB_TOKEN is NOT sufficient — pass an App
+      installation token (see the setup-token action) whose app has
+      "Members: read". If team membership cannot be read the gate returns
+      not-eligible rather than guessing.
+    required: true
+  max_changed_lines:
+    description: "Maximum insertions + deletions for a PR to remain eligible"
+    required: false
+    default: "300"
+  max_changed_files:
+    description: "Maximum changed files for a PR to remain eligible"
+    required: false
+    default: "5"
+  sensitive_paths:
+    description: |
+      Comma-separated globs. Any changed file matching one of these makes the PR
+      ineligible regardless of size. Supports ** and *.
+    required: false
+    default: ".github/**,**/*.tf,**/*.hcl,live/**"
+  staff_team:
+    description: "Team slug whose members may have their PRs auto-approved"
+    required: false
+    default: "GT-dev-randd"
+  intern_team:
+    description: |
+      Team slug whose members always require human review.
+
+      The default is spelled with a triple d. That is correct and deliberate —
+      the team really is named GT-interns-randdd (slug gt-interns-randdd) in the
+      GigaTech-net organization. Do not "correct" it to randd; that team does
+      not exist and the lookup would 404.
+
+      Only team **members** are treated as interns. A **maintainer** of this
+      team is a supervisor and is not blocked — that is how someone can manage
+      the intern team without their own PRs requiring review.
+
+      Set to an empty string to skip the intern check entirely.
+    required: false
+    default: "GT-interns-randdd"
+  trusted_bots:
+    description: |
+      Comma-separated bot logins exempt from the team-membership checks. Their
+      PRs are still subject to size, path and label checks.
+    required: false
+    default: "dependabot[bot]"
+  bot_major_bump_requires_review:
+    description: |
+      When a trusted bot opens a dependency PR, compare the versions in its
+      title. A major bump of a THIRD-PARTY dependency requires human review; a
+      minor or patch bump does not. Majors of owners listed in
+      first_party_action_owners are exempt.
+
+      An unparsable title is treated as a major bump, i.e. not eligible. The
+      title format is Dependabot's convention, not a contract, so it must fail
+      closed when it changes.
+
+      A bump that replaces a bare major with a more precise version at the same
+      major -- "from 1 to 1.1.1" -- is classified 'pin' rather than a bump and is
+      NEVER eligible, regardless of owner. It freezes a deliberately moving major
+      tag, which is the opposite of an update.
+    required: false
+    default: "true"
+  first_party_action_owners:
+    description: |
+      Comma-separated GitHub owners whose actions are treated as first-party, so
+      that even a major bump by a trusted bot is auto-approvable. Majors here are
+      routine and were auto-approved before pr-gate existed; third-party majors
+      are where breaking changes and supply-chain risk actually live.
+
+      Deliberately does NOT include GigaTech-net: a major of our own shared CI is
+      breaking by definition and must be read by a human.
+    required: false
+    default: "actions,github"
+  bot_minor_patch_bypasses_sensitive_paths:
+    description: |
+      Allow a trusted bot's minor or patch bump to remain eligible even when it
+      touches a sensitive path.
+
+      Without this, routine action bumps would always require review, because
+      Dependabot's most common PR in these repositories edits
+      .github/workflows/*.yaml, which matches the default sensitive paths.
+
+      Only applies to minor and patch bumps from trusted bots. A major bump, an
+      unparsable title, or any human-authored change is unaffected.
+    required: false
+    default: "true"
+  needs_review_label:
+    description: "Label that forces human review when present"
+    required: false
+    default: "needs-human-review"
+  post_comment:
+    description: "Post the decision and its reasons as a PR comment"
+    required: false
+    default: "true"
+
+outputs:
+  auto_approve_eligible:
+    description: "'true' only if every check passed. 'false' otherwise, including on error."
+    value: ${{ steps.gate.outputs.auto_approve_eligible }}
+  reasons:
+    description: "JSON array of human-readable reasons for the decision"
+    value: ${{ steps.gate.outputs.reasons }}
+  bot_bump:
+    description: "'major' | 'minor' | 'patch' | 'unparsable' | '' when the author is not a trusted bot"
+    value: ${{ steps.gate.outputs.bot_bump }}
+  changed_files:
+    description: "Number of files changed in the PR"
+    value: ${{ steps.gate.outputs.changed_files }}
+  changed_lines:
+    description: "Insertions + deletions across the PR"
+    value: ${{ steps.gate.outputs.changed_lines }}
+
+runs:
+  using: composite
+  steps:
+    - name: Evaluate PR gate
+      id: gate
+      uses: actions/github-script@v9
+      env:
+        MAX_LINES: ${{ inputs.max_changed_lines }}
+        MAX_FILES: ${{ inputs.max_changed_files }}
+        SENSITIVE_PATHS: ${{ inputs.sensitive_paths }}
+        STAFF_TEAM: ${{ inputs.staff_team }}
+        INTERN_TEAM: ${{ inputs.intern_team }}
+        TRUSTED_BOTS: ${{ inputs.trusted_bots }}
+        BOT_MAJOR_REVIEW: ${{ inputs.bot_major_bump_requires_review }}
+        FIRST_PARTY_OWNERS: ${{ inputs.first_party_action_owners }}
+        BOT_MINOR_BYPASS: ${{ inputs.bot_minor_patch_bypasses_sensitive_paths }}
+        NEEDS_REVIEW_LABEL: ${{ inputs.needs_review_label }}
+        POST_COMMENT: ${{ inputs.post_comment }}
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const reasons = [];
+          let eligible = true;
+          let changedFiles = 0;
+          let changedLines = 0;
+
+          // Mark each reason so a pass is not mistaken for a failure. Every
+          // check appends a line, so an unmarked list reads as if all of them
+          // were objections.
+          const deny = (why) => { eligible = false; reasons.push('BLOCK: ' + why); };
+          const pass = (why) => { reasons.push('ok: ' + why); };
+
+          // ---- 0. must be a pull_request event -----------------------------
+          const pr = context.payload.pull_request;
+          if (!pr) {
+            core.setOutput('auto_approve_eligible', 'false');
+            core.setOutput('reasons', JSON.stringify(['not a pull_request event']));
+            core.setOutput('changed_files', '0');
+            core.setOutput('changed_lines', '0');
+            core.warning('pr-gate ran outside a pull_request event; returning not-eligible');
+            return;
+          }
+
+          const owner = context.repo.owner;
+          const repo  = context.repo.repo;
+          const num   = pr.number;
+          // The PR author, NOT github.actor. github.actor is whoever triggered
+          // the event, which on a re-run or synchronize may be someone else.
+          const author = pr.user.login;
+
+          try {
+            // ---- 1. size ---------------------------------------------------
+            const maxLines = parseInt(process.env.MAX_LINES, 10);
+            const maxFiles = parseInt(process.env.MAX_FILES, 10);
+            if (!Number.isFinite(maxLines) || !Number.isFinite(maxFiles)) {
+              throw new Error('max_changed_lines/max_changed_files are not numbers');
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: num, per_page: 100,
+            });
+            changedFiles = files.length;
+            // Insertions AND deletions. The workflow this replaces used
+            // `git diff-index --shortstat | awk '{print $4}'`, which is
+            // insertions only, so a large deletion scored zero.
+            changedLines = files.reduce((n, f) => n + f.additions + f.deletions, 0);
+
+            if (changedFiles > maxFiles) deny(`${changedFiles} files changed (limit ${maxFiles})`);
+            else pass(`${changedFiles} files changed (limit ${maxFiles})`);
+
+            if (changedLines > maxLines) deny(`${changedLines} lines changed (limit ${maxLines})`);
+            else pass(`${changedLines} lines changed (limit ${maxLines})`);
+
+            // ---- 1b. trusted bot version policy ---------------------------
+            // Computed before the path check because a minor/patch bump may be
+            // exempted from it. Previously this logic lived as a bespoke
+            // `dependabot-auto-approve` job in 3 of ~40 repositories; it is
+            // here so every consumer gets it.
+            const bots = process.env.TRUSTED_BOTS.split(',').map(s => s.trim()).filter(Boolean);
+            const isBot = bots.includes(author);
+            let bump = '';
+
+            let depOwner = '';
+
+            if (isBot) {
+              // Dependabot titles read e.g. "Bump actions/checkout from 4.1.0 to 5.0.0"
+              const dep = /\bbump\s+(\S+)\s+from\b/i.exec(pr.title || '');
+              depOwner = dep ? (dep[1].split('/')[0] || '').toLowerCase() : '';
+
+              const m = /\bfrom\s+v?(\d+)(?:\.(\d+))?(?:\.(\d+))?\S*\s+to\s+v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/i
+                        .exec(pr.title || '');
+              if (!m) {
+                bump = 'unparsable';
+              } else {
+                const [fMaj, fMin, fPat] = [m[1], m[2] || '0', m[3] || '0'].map(Number);
+                const [tMaj, tMin, tPat] = [m[4], m[5] || '0', m[6] || '0'].map(Number);
+                // A bare-major `from` with a more precise `to` at the SAME major is
+                // not a version bump at all -- it replaces a deliberately MOVING
+                // major tag with a pin. "from 1 to 1.1.1" would have frozen 19
+                // `@v1` refs at a release two behind current. Never auto-mergeable,
+                // whoever the owner is.
+                //
+                // "from 5 to 7" is bare on both sides with different majors, so it
+                // stays an ordinary major bump.
+                const fromIsBareMajor = m[2] === undefined;
+                const toIsMorePrecise = m[5] !== undefined || m[6] !== undefined;
+                bump = fromIsBareMajor && toIsMorePrecise && tMaj === fMaj ? 'pin'
+                     : tMaj !== fMaj ? 'major'
+                     : tMin !== fMin ? 'minor'
+                     : 'patch';
+              }
+
+              // Majors from first-party owners (actions/*, github/*) are routine and
+              // were auto-approved before pr-gate existed. Third-party majors still
+              // need a human -- that is where breaking changes and supply-chain risk
+              // actually live.
+              const firstParty = process.env.FIRST_PARTY_OWNERS
+                .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+              const isFirstParty = !!depOwner && firstParty.includes(depOwner);
+
+              if (bump === 'pin') {
+                deny(`bot '${author}': pins a moving major tag ` +
+                     `(${depOwner || 'unknown owner'}) -- never auto-merged`);
+              } else if (process.env.BOT_MAJOR_REVIEW === 'true'
+                         && bump !== 'minor' && bump !== 'patch'
+                         && !isFirstParty) {
+                deny(bump === 'unparsable'
+                  ? `bot '${author}': could not read versions from the PR title, treating as major`
+                  : `bot '${author}': major version bump of third-party '${depOwner}'`);
+              } else if (bump === 'major' && isFirstParty) {
+                pass(`bot '${author}': major bump of first-party '${depOwner}'`);
+              } else {
+                pass(`bot '${author}': ${bump} bump`);
+              }
+            }
+            core.setOutput('bot_bump', bump);
+
+            // ---- 2. sensitive paths ---------------------------------------
+            const globToRe = (g) => {
+              // Single pass so glob tokens and regex escaping cannot interfere.
+              // Order in the alternation matters: '**/' before '**' before '*'.
+              const body = g.trim().replace(
+                /\*\*\/|\*\*|\*|\?|[.+^${}()|[\]\\]/g,
+                (m) => m === '**/' ? '(?:[^/]+/)*'
+                     : m === '**'  ? '.*'
+                     : m === '*'   ? '[^/]*'
+                     : m === '?'   ? '[^/]'
+                     : '\\' + m);
+              return new RegExp('^' + body + '$');
+            };
+
+            const globs = process.env.SENSITIVE_PATHS.split(',').filter(s => s.trim());
+            const hits = [];
+            for (const g of globs) {
+              const re = globToRe(g);
+              for (const f of files) if (re.test(f.filename)) hits.push(`${f.filename} (${g.trim()})`);
+            }
+            // A dependency bump is almost always a change to .github/workflows/**,
+            // which is a sensitive path -- so without this exemption no bot PR
+            // could ever be eligible. First-party majors are exempt too, or the
+            // policy above would be dead letter. 'pin' and 'unparsable' never are.
+            const firstPartyOwners = process.env.FIRST_PARTY_OWNERS
+              .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+            const botExempt = isBot
+              && process.env.BOT_MINOR_BYPASS === 'true'
+              && (bump === 'minor' || bump === 'patch'
+                  || (bump === 'major' && !!depOwner && firstPartyOwners.includes(depOwner)));
+
+            if (hits.length && botExempt) {
+              pass(`touches sensitive paths but exempt: ${bump} bump by trusted bot '${author}'`);
+            } else if (hits.length) {
+              deny(`touches sensitive paths: ${[...new Set(hits)].slice(0, 8).join(', ')}`);
+            } else {
+              pass(`no sensitive paths touched (${globs.length} patterns checked)`);
+            }
+
+            // ---- 3. explicit override label -------------------------------
+            const label = process.env.NEEDS_REVIEW_LABEL;
+            const { data: labelList } = await github.rest.issues.listLabelsOnIssue({
+              owner, repo, issue_number: num, per_page: 100,
+            });
+            // Exact match. The workflow this replaces used an unanchored
+            // `grep -q`, so any label merely containing the string matched.
+            const names = labelList.map(l => l.name);
+            if (names.includes(label)) deny(`'${label}' label is present`);
+            else pass(`'${label}' label not present`);
+
+            // ---- 4. author -------------------------------------------------
+            if (isBot) {
+              pass(`author '${author}' is a trusted bot; team checks skipped`);
+            } else {
+              // Returns the author's role in the team ('member' | 'maintainer')
+              // or null if they are not in it. Role matters: a maintainer of the
+              // intern team is a supervisor, not an intern. The workflow this
+              // replaces queried `?role=member`, which excluded maintainers;
+              // getMembershipForUserInOrg does not, so the role is checked here.
+              const teamRole = async (slug) => {
+                try {
+                  const { data } = await github.rest.teams.getMembershipForUserInOrg({
+                    org: owner, team_slug: slug, username: author,
+                  });
+                  return data.role || 'member';
+                } catch (e) {
+                  if (e.status === 404) return null;
+                  // 403/401/5xx means we genuinely do not know. Fail closed.
+                  throw new Error(`team lookup for '${slug}' failed with ${e.status}: ${e.message}`);
+                }
+              };
+
+              const intern = process.env.INTERN_TEAM.trim();
+              const staff  = process.env.STAFF_TEAM.trim();
+
+              if (intern) {
+                const r = await teamRole(intern);
+                if (r === 'member') deny(`author '${author}' is a member of '${intern}'`);
+                else if (r === 'maintainer') pass(`author '${author}' maintains '${intern}' (supervisor, not an intern)`);
+                else pass(`author '${author}' is not in '${intern}'`);
+              }
+
+              if (staff) {
+                const r = await teamRole(staff);
+                if (r === null) deny(`author '${author}' is not in '${staff}'`);
+                else pass(`author '${author}' is in '${staff}' as ${r}`);
+              }
+            }
+          } catch (err) {
+            // Fail closed on anything unexpected.
+            eligible = false;
+            reasons.push(`error during evaluation: ${err.message}`);
+            core.warning(`pr-gate failed closed: ${err.message}`);
+          }
+
+          core.setOutput('auto_approve_eligible', eligible ? 'true' : 'false');
+          core.setOutput('reasons', JSON.stringify(reasons));
+          core.setOutput('changed_files', String(changedFiles));
+          core.setOutput('changed_lines', String(changedLines));
+
+          const verdict = eligible
+            ? 'ELIGIBLE for automated approval and merge'
+            : 'NOT eligible — human review required';
+          core.notice(`pr-gate: ${verdict}`);
+          core.summary
+            .addHeading('PR gate', 3)
+            .addRaw(`**${verdict}**`)
+            .addList(reasons)
+            .write();
+
+          if (process.env.POST_COMMENT === 'true') {
+            const marker = '<!-- gigatech-pr-gate -->';
+            const body = [
+              marker,
+              `### PR gate: ${eligible ? '✅ eligible' : '🔒 human review required'}`,
+              '',
+              ...reasons.map(r => r.startsWith('BLOCK: ')
+                ? `- ❌ **${r.slice(7)}**`
+                : r.startsWith('ok: ') ? `- ✅ ${r.slice(4)}`
+                : `- ⚠️ ${r}`),
+            ].join('\n');
+            try {
+              const existing = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: num, per_page: 100,
+              });
+              const mine = existing.find(c => c.body && c.body.includes(marker));
+              if (mine) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: num, body });
+              }
+            } catch (e) {
+              // A failure to comment must not change the decision.
+              core.warning(`could not post pr-gate comment: ${e.message}`);
+            }
+          }

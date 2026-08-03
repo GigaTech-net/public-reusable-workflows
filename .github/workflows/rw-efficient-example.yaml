@@ -1,0 +1,43 @@
+---
+name: Example Efficient Workflow
+# This example shows how to use the new composite actions for better efficiency
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  pull-requests: read
+  statuses: write
+
+jobs:
+  efficient-checks:
+    name: Efficient Combined Checks
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Setup (replaces rw-setup.yaml workflow)
+      - name: Setup workflow environment
+        id: setup
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@v1
+
+      # Step 2: Validate PR title (replaces rw-validate-pr-title.yaml workflow)
+      - name: Validate PR title
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/validate-pr-title@v1
+        if: github.event_name == 'pull_request'
+
+      # Step 3: Secret scan (replaces rw-secret-scan.yaml workflow)
+      - name: Secret scan
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1
+
+      # Step 4: Spellcheck (replaces rw-spellcheck.yaml workflow)
+      - name: Spellcheck
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Output information from setup step
+      - name: Display version information
+        run: |
+          echo "Current version: ${{ steps.setup.outputs.current-version }}"
+          echo "Next version: ${{ steps.setup.outputs.version }}"
+          echo "Branch: ${{ steps.setup.outputs.branch }}"

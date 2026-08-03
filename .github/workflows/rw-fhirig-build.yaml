@@ -1,0 +1,139 @@
+---
+name: FHIR IG Build
+
+on:
+  workflow_call:
+    inputs:
+      rubyVersion:
+        required: true
+        type: string
+        description: "The ruby version to use to build the IG"
+      javaVersion:
+        required: true
+        type: string
+        description: "The java version to use to build the IG"
+      javaDistro:
+        required: true
+        type: string
+        description: "The java distro to use to build the IG"
+      nodeVersion:
+        required: true
+        type: string
+        description: "The node version to use to build the IG"
+      igVersion:
+        required: true
+        type: string
+        description: "The IG version to use to build the IG"
+      artifactName:
+        required: false
+        type: string
+        description: "The artifact name to write to GH blob storage after this workflow completes"
+        default: ""
+      runnerOS:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "The default runner to use for this workflow"
+      failOnError:
+        required: false
+        type: boolean
+        default: true
+        description: "Fail the IG Build workflow is errors detected from build"
+
+permissions:
+  contents: read
+
+jobs:
+  build-ig:
+    runs-on: ${{ inputs.runnerOS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.rubyVersion }}
+
+      - name: Setup Java / Maven
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ inputs.javaVersion }}
+          distribution: ${{ inputs.javaDistro }}
+
+      - name: Install jekyll
+        run: |
+          gem install jekyll
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.nodeVersion }}
+
+      - name: Install sushi
+        run: |
+          npm install -g fsh-sushi
+
+      - name: Update publisher
+        run: |
+          # _updatePublisher.sh overwrites ITSELF as its last act:
+          #   cp /tmp/_updatePublisher.new _updatePublisher.sh
+          # cp rewrites the same inode, and bash reads a script incrementally by
+          # byte offset, so execution resumes mid-token in the new content:
+          #   ./_updatePublisher.sh: line 142: syntax error near unexpected token `fi'
+          # It only bites when HL7 has published a newer script, which is why it
+          # started failing on its own in 2026-07 with no change on our side.
+          #
+          # Run from a copy outside the working tree. bash reads that copy, which
+          # the script never touches; cwd stays the repo root so every relative
+          # path inside it still resolves.
+          cp ./_updatePublisher.sh "${RUNNER_TEMP}/_updatePublisher.sh"
+          bash "${RUNNER_TEMP}/_updatePublisher.sh" -y
+
+      - name: Version Info
+        run: |
+          java -version
+          node --version
+          npm --version
+          jekyll --version
+          mvn --version
+          java -jar ./input-cache/publisher.jar -v
+
+      - name: Update IG version
+        uses: fjogeleit/yaml-update-action@v0.1
+        with:
+          valueFile: "sushi-config.yaml"
+          propertyPath: "version"
+          value: "${{ inputs.igVersion }}"
+          commitChange: false
+
+      - name: print sushi config
+        run: |
+          cat sushi-config.yaml
+
+      - name: Build the IG
+        run: |
+          ./_genonce.sh
+
+      - name: Verify IG was built
+        run: |
+          ls -la output/index.html
+
+      - name: Verify IG has no errors
+        run: |
+          echo 'failOnError is '
+          echo ${{ inputs.failOnError }}
+          if [ ${{ inputs.failOnError }} == true ]; then
+            ./findErrors.sh ERROR:
+          fi
+
+      - name: Archive Code
+        if: ${{ inputs.artifactName != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifactName }}
+          path: output/full-ig.zip
+          retention-days: 1
+          overwrite: true
