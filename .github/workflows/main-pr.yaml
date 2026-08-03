@@ -66,6 +66,11 @@ jobs:
         uses: GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@main
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
+          # "iif" appears in templates/super-linter.env as the worked example
+          # of Super-Linter's codespell disagreeing with this action. The
+          # mirror ships that file, so the repo that documents the conflict
+          # must not fail on it.
+          wordsToIgnore: "iif"
 
   complexity:
     name: Check Complexity
