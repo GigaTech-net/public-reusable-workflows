@@ -34,9 +34,15 @@ jobs:
       pre-release-label: ${{ steps.setup.outputs.pre-release-label }}
       branch: ${{ steps.setup.outputs.branch }}
       NEEDS_REVIEW_LABEL: ${{ env.NEEDS_REVIEW_LABEL }}
+      auto_approve_eligible: ${{ steps.pr-gate.outputs.auto_approve_eligible }}
+      gate_reasons: ${{ steps.pr-gate.outputs.reasons }}
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
     steps:
       - name: Setup GitHub token
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
         with:
           app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
@@ -49,21 +55,21 @@ jobs:
       - name: Setup workflow environment
         id: setup
         uses: >-
-          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@main
+          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@v1
 
       # Validate PR title using composite action
       - name: Validate PR title
         uses: >-
-          GigaTech-net/public-reusable-workflows/.github/actions/validate-pr-title@main
+          GigaTech-net/public-reusable-workflows/.github/actions/validate-pr-title@v1
 
       # Secret scan using composite action
       - name: Secret scan
         uses: >-
-          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@main
+          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1
 
       # Spellcheck using composite action
       - name: Spellcheck
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@v1
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
           # "iif" appears in templates/super-linter.env as the worked example
@@ -72,121 +78,83 @@ jobs:
           # must not fail on it.
           wordsToIgnore: "iif"
 
-  complexity:
-    name: Check Complexity
-    needs: quality-checks
-    permissions:
-      contents: write
-      pull-requests: write
-    uses: >-
-      GigaTech-net/public-reusable-workflows/.github/workflows/rw-complexity.yaml@main
-    with:
-      needsReviewLabel: >-
-        ${{ needs.quality-checks.outputs.NEEDS_REVIEW_LABEL }}
-    secrets: inherit
-
-  human-review:
-    name: Check if human review is needed
-    needs: [quality-checks, complexity]
-    permissions: read-all
-    uses: >-
-      GigaTech-net/public-reusable-workflows/.github/workflows/rw-checkreview.yaml@main
-    with:
-      needsReviewLabel: ${{ needs.quality-checks.outputs.NEEDS_REVIEW_LABEL }}
-    secrets: inherit
-
-  enable-auto-merge:
-    name: Enable Auto Merge
-    needs: [human-review, quality-checks, complexity, auto-approve]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Setup GitHub token
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
+      # Replaces the `complexity` and `human-review` jobs, which called
+      # rw-complexity / rw-checkreview. Those read a single label and
+      # approved on sight. As a step inside quality-checks the gate is
+      # covered by the one required status check.
+      - name: PR gate
+        id: pr-gate
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/pr-gate@v1
         with:
-          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
-          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+          github_token: ${{ env.GITHUB_TOKEN }}
+          needs_review_label: ${{ env.NEEDS_REVIEW_LABEL }}
 
-      - name: Debug - Show conditions
-        run: |
-          echo "PR Author: ${{ github.event.pull_request.user.login }}"
-          human_review="${{ needs.human-review.outputs.human_review_needed }}"
-          echo "Human review needed: $human_review"
-          echo "Complexity result: ${{ needs.complexity.outputs.complex }}"
-          echo "Quality checks result: ${{ needs.quality-checks.result }}"
-
-      - name: Enable auto merge for regular PRs (not dependabot)
-        if: |
-          github.event.pull_request.user.login != 'dependabot[bot]' &&
-          needs.human-review.outputs.human_review_needed == 'false'
-        run: |
-          {
-            gh pr merge --auto --merge "$PR_URL"
-          }
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
-
-      - name: Enable auto merge for dependabot PRs meeting conditions
-        if: |
-          github.event.pull_request.user.login == 'dependabot[bot]' &&
-          (needs.complexity.outputs.complex == 'false' ||
-            needs.complexity.outputs.complex == '') &&
-          needs.human-review.outputs.human_review_needed == 'false' &&
-          needs.quality-checks.result == 'success'
-        run: |
-          {
-            echo "✅ Dependabot PR meets auto-merge criteria:"
-            echo "  - Not complex (files < 6, lines < 200)"
-            echo "  - No human review needed"
-            echo "  - Quality checks passed"
-            gh pr merge --auto --merge "$PR_URL"
-          }
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Dependabot PR requires manual review
-        if: |
-          github.event.pull_request.user.login == 'dependabot[bot]' &&
-          (needs.complexity.outputs.complex == 'true' ||
-            needs.human-review.outputs.human_review_needed == 'true' ||
-            needs.quality-checks.result != 'success')
-        run: |
-          {
-            echo "⚠️  Dependabot PR requires manual review due to:"
-            echo "  - Complex: ${{ needs.complexity.outputs.complex }}"
-            human_review="${{ needs.human-review.outputs.human_review_needed }}"
-            echo "  - Human review needed: $human_review"
-            echo "  - Quality checks result: ${{ needs.quality-checks.result }}"
-            echo ""
-            echo "Auto-merge skipped for safety."
-          }
-
+  # auto-approve BEFORE enable-auto-merge. The reverse order leaves a PR
+  # armed-but-unapproved when the approval step fails, so the next approval by any
+  # human merges it with the gate never re-evaluated.
   auto-approve:
     name: Auto approve PR
-    needs: [human-review, quality-checks, complexity]
+    needs: [quality-checks]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
     if: |
-      needs.human-review.outputs.human_review_needed == 'false' &&
-      (needs.complexity.outputs.complex == 'false' ||
-       needs.complexity.outputs.complex == '') &&
-      needs.quality-checks.result == 'success'
+      needs.quality-checks.result == 'success' &&
+      needs.quality-checks.outputs.auto_approve_eligible == 'true'
     steps:
       - name: Setup GitHub token
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
         with:
           app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
 
-      - name: Approve the PR if auto-merge criteria met
-        run: |
-          echo "✅ Auto-approving PR - all conditions met"
-          gh pr review --approve "$PR_URL"
+      - name: Approve the PR
+        run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Must be the App token. secrets.GITHUB_TOKEN would discard the App token
+          # setup-token just wrote into $GITHUB_ENV, so the approval would come from
+          # github-actions[bot] and would NOT satisfy required_approving_review_count.
+          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+
+  enable-auto-merge:
+    name: Enable Auto Merge
+    needs: [quality-checks, auto-approve]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    if: |
+      needs.quality-checks.result == 'success' &&
+      needs.auto-approve.result == 'success' &&
+      needs.quality-checks.outputs.auto_approve_eligible == 'true'
+    steps:
+      - name: Setup GitHub token
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
+      # One step for every author. The previous steps differed only by dependabot
+      # conditions and by reading complexity/human-review outputs; pr-gate handles
+      # bots via trusted_bots and its semver policy.
+      - name: Enable auto merge
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          # The App token, not GT_DEVSECOPS_PAT. A PAT bypasses branch protection;
+          # the App cannot, because every ruleset has bypass_actors: [].
+          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+
+  report-gate:
+    name: Report gate decision
+    needs: [quality-checks]
+    runs-on: ubuntu-latest
+    if: always() && needs.quality-checks.outputs.auto_approve_eligible != 'true'
+    steps:
+      - name: Human review required
+        env:
+          REASONS: ${{ needs.quality-checks.outputs.gate_reasons }}
+        run: |
+          echo "This PR is not eligible for automated approval or merge."
+          echo "Reasons: $REASONS"
