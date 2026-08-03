@@ -92,7 +92,7 @@ jobs:
 
   enable-auto-merge:
     name: Enable Auto Merge
-    needs: [human-review, quality-checks, complexity]
+    needs: [human-review, quality-checks, complexity, auto-approve]
     runs-on: ubuntu-latest
     permissions:
       contents: write
