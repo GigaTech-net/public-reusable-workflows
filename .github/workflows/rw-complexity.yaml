@@ -1,5 +1,10 @@
 ---
 name: PR Complexity Check
+# SUPERSEDED by the pr-gate composite action
+# (.github/actions/pr-gate). This workflow remains functional for
+# consumers that have not yet migrated, but its decision logic has
+# known gaps documented in the README under 'The PR gate'. New
+# consumers should not adopt it.
 
 on:
   workflow_call:
@@ -63,8 +68,21 @@ permissions:
   contents: write
 
 jobs:
+  deprecation-notice:
+    name: Deprecation Notice
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Deprecation Warning
+        run: |
+          echo "⚠️  DEPRECATION NOTICE: This rw-complexity.yaml workflow is deprecated."
+          echo "🔄 This workflow remains functional but is deprecated."
+          echo "   Future updates will focus on composite actions where applicable."
+          echo ""
+          echo "For more information, see: https://github.com/GigaTech-net/public-reusable-workflows#composite-actions"
+
   check_complexity:
     runs-on: ubuntu-latest
+    needs: deprecation-notice
     outputs:
       changed_files: ${{ steps.files.outputs.changed_files }}
       changed_lines: ${{ steps.lines.outputs.changed_lines }}
@@ -77,47 +95,61 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup GitHub token
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
       - name: Install jq
         run: sudo apt-get install -y jq
 
       - name: Get changed files
         id: files
+        env:
+          TGT_BRANCH: ${{ inputs.tgtBranch }}
         run: |
           # shellcheck disable=SC2086
           {
-            CHANGED_FILES=$(git diff-index --name-only ${{ inputs.tgtBranch }})
+            CHANGED_FILES=$(git diff-index --name-only "$TGT_BRANCH")
             {
               echo 'changed_files<<EOF'
               echo $CHANGED_FILES
-              echo EOF 
+              echo EOF
             } >> $GITHUB_OUTPUT
           }
 
       - name: Count changed lines
         id: lines
+        env:
+          TGT_BRANCH: ${{ inputs.tgtBranch }}
         run: |
           # shellcheck disable=SC2086
           {
-            CHANGED_LINES=$(git diff-index --shortstat ${{ inputs.tgtBranch }} | awk '{print $4}')
+            CHANGED_LINES=$(git diff-index --shortstat "$TGT_BRANCH" | awk '{print $4}')
             echo "changed_lines=$CHANGED_LINES" >> $GITHUB_OUTPUT
           }
 
       - name: Check for complexity
         id: complexity
+        env:
+          DIRS_TO_CHECK: ${{ inputs.directoriesToCheck }}
+          FILES_THRESHOLD: ${{ inputs.filesThreshold }}
+          LINES_THRESHOLD: ${{ inputs.linesThreshold }}
         run: |
           # shellcheck disable=SC2086
           {
             FILES="${{ steps.files.outputs.changed_files }}"
             LINES="${{ steps.lines.outputs.changed_lines }}"
-            FILES_COMPLEXITY_THRESHOLD=${{ inputs.filesThreshold }}
-            LINES_COMPLEXITY_THRESHOLD=${{ inputs.linesThreshold }}
+            FILES_COMPLEXITY_THRESHOLD=$FILES_THRESHOLD
+            LINES_COMPLEXITY_THRESHOLD=$LINES_THRESHOLD
             COMPLEX=false
             COMPLEX_MSG="Files and Lines thresholds not surpassed."
 
             totalFiles=0
             for FILE in $FILES; do
               echo "Checking file: $FILE"
-              if [[ "$FILE" =~ ^(${{ inputs.directoriesToCheck }})/ ]]; then
+              if [[ "$FILE" =~ ^($DIRS_TO_CHECK)/ ]]; then
                 totalFiles=$((totalFiles+1))
               fi
             done
@@ -138,55 +170,89 @@ jobs:
             } >> $GITHUB_OUTPUT
           }
 
-      - name: Check if user intern
+      - name: Check if PR author is intern
+        if: github.event_name=='pull_request'
         id: intern_check
         env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+          PR_AUTHOR_CTX: ${{ github.actor }}
+          INTERN_TEAM: ${{ inputs.internTeam }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           # shellcheck disable=SC2086
           {
+            PR_AUTHOR="$PR_AUTHOR_CTX"
             IS_INTERN=false
-            PR_AUTHOR="${{ github.actor }}"
-            if [ "$PR_AUTHOR" != "dependabot[bot]" ]; then
-
-              INTERN_TEAM=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            if [[ -n "$INTERN_TEAM" ]]; then
+              # Get team members with error handling
+              TEAM_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/orgs/${{ github.repository_owner }}/teams/${{ inputs.internTeam }}/members?role=member | jq -r '.[].login')
-
-              if echo "$INTERN_TEAM" | grep -qw "$PR_AUTHOR"; then
-                echo "$PR_AUTHOR is an intern."
-                IS_INTERN=true
+                "https://api.github.com/orgs/$REPO_OWNER/teams/$INTERN_TEAM/members?role=member" 2>/dev/null)
+              
+              # Check if curl was successful and we got a response
+              if [[ $? -eq 0 && -n "$TEAM_RESPONSE" ]]; then
+                # Try to parse with jq, but handle errors gracefully
+                if INTERN_TEAM=$(echo "$TEAM_RESPONSE" | jq -r '.[].login' 2>/dev/null); then
+                  if [[ -n "$INTERN_TEAM" ]]; then
+                    if echo "$INTERN_TEAM" | grep -qw "$PR_AUTHOR"; then
+                      echo "$PR_AUTHOR is an intern."
+                      IS_INTERN=true
+                    else
+                      echo "$PR_AUTHOR is not an intern."
+                    fi
+                  else
+                    echo "Warning: Could not parse team members list. Assuming not an intern."
+                  fi
+                else
+                  echo "Warning: Could not parse team members JSON. Assuming not an intern."
+                fi
               else
-                echo "$PR_AUTHOR is not a intern."
+                echo "Warning: Could not fetch team members from GitHub API. Assuming not an intern."
               fi
-              echo "is_intern=$IS_INTERN" >> $GITHUB_OUTPUT
             fi
+            echo "is_intern=$IS_INTERN" >> $GITHUB_OUTPUT
           }
 
       - name: Get team members
         if: steps.complexity.outputs.complex == 'true' || steps.intern_check.outputs.is_intern == 'true'
         id: team_members
         env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+          PR_AUTHOR_CTX: ${{ github.actor }}
+          REVIEW_TEAM: ${{ inputs.reviewTeam }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           # shellcheck disable=SC2086
           {
-            PR_AUTHOR="${{ github.actor }}"
-            GH_TEAM_MEMBERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/orgs/${{ github.repository_owner }}/teams/${{ inputs.reviewTeam }}/members)
+            PR_AUTHOR="$PR_AUTHOR_CTX"
+            TEAM_MEMBERS=""
+            FILTERED_TEAM_MEMBERS=""
 
-            if [[ $GH_TEAM_MEMBERS == *"login"* ]]; then
-                TEAM_MEMBERS=$(echo $GH_TEAM_MEMBERS | jq -r '.[].login')
-                FILTERED_TEAM_MEMBERS=$(echo "$TEAM_MEMBERS" | grep -v "^$PR_AUTHOR" | tr '\n' ' ')
-            else
-                echo "Error reading team members from Github!"
-                echo $GH_TEAM_MEMBERS
-                FILTERED_TEAM_MEMBERS=""
+            if [[ -n "$REVIEW_TEAM" ]]; then
+              # Get team members with error handling
+              TEAM_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  -H "Accept: application/vnd.github.v3+json" \
+                  "https://api.github.com/orgs/$REPO_OWNER/teams/$REVIEW_TEAM/members" 2>/dev/null)
+
+              # Check if curl was successful and we got a response
+              if [[ $? -eq 0 && -n "$TEAM_RESPONSE" ]]; then
+                # Try to parse with jq, but handle errors gracefully
+                if LOGIN_LIST=$(echo "$TEAM_RESPONSE" | jq -r '.[].login' 2>/dev/null); then
+                  if [[ -n "$LOGIN_LIST" ]]; then
+                    TEAM_MEMBERS="$LOGIN_LIST"
+                    FILTERED_TEAM_MEMBERS=$(echo "$TEAM_MEMBERS" | grep -v "^$PR_AUTHOR" | tr '\n' ' ')
+                    echo "Found team members: $FILTERED_TEAM_MEMBERS"
+                  else
+                    echo "Warning: Could not parse team member logins. Will not request reviews."
+                  fi
+                else
+                  echo "Warning: Could not parse team members JSON. Will not request reviews."
+                fi
+              else
+                echo "Warning: Could not retrieve team members from GitHub API. Will not request reviews."
+              fi
             fi
             {
               echo 'team_members<<EOF'
-              echo $FILTERED_TEAM_MEMBERS
+              echo "$FILTERED_TEAM_MEMBERS"
               echo EOF
             } >> $GITHUB_OUTPUT
           }
@@ -200,11 +266,9 @@ jobs:
               curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github.v3+json" \
                 https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/requested_reviewers \
-                -d "{\"reviewers\":[\"$MEMBER\"]}"
+                -d "{\"reviewers\":[\"$MEMBER\"]}" 2>/dev/null
             done
           }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
 
       - name: comment pull request not complex
         if: github.event_name=='pull_request'
@@ -216,8 +280,6 @@ jobs:
               issue_number: context.payload.pull_request.number,
               body: 'PR Complexity : ${{ steps.complexity.outputs.complex_msg }} | Intern made change : ${{ steps.intern_check.outputs.is_intern }}'
             })
-        env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
 
       - name: Add label if complex
         if: steps.complexity.outputs.complex == 'true' || steps.intern_check.outputs.is_intern == 'true' && github.event_name=='pull_request'
@@ -225,5 +287,3 @@ jobs:
         with:
           labels: ${{ inputs.needsReviewLabel }}
           number: ${{ github.event.issue.number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}

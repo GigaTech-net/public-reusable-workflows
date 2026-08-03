@@ -4,11 +4,6 @@
 
 name: Lint all the codes
 
-#
-# Documentation:
-# https://help.github.com/en/articles/workflow-syntax-for-github-actions
-#
-
 on:
   workflow_call:
     inputs:
@@ -21,10 +16,12 @@ on:
         description: A regex to exclude files from linting
         required: false
         type: string
+        default: ""
       filter-regex-include:
         description: A regex to include files from linting
         required: false
         type: string
+        default: ""
       VALIDATE_CSHARP:
         description: Validate CSHARP
         required: false
@@ -35,39 +32,48 @@ on:
         type: string
         default: "ubuntu-latest"
         description: The default runner to use for this workflow
-      forkedRepoLIntRestriction:
-        required: false
-        type: boolean
-        default: false
-        description: The calling repo is from a forked repo and therefore we want to restrict linting so that we don't have to deal with 3rd party lint errors
 
 permissions:
   contents: read # git permissions to repo pull/push
   statuses: write # read/write to repo custom statuses and checks
 
 jobs:
+  deprecation-notice:
+    name: Deprecation Notice
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Deprecation Warning
+        run: |
+          echo "⚠️  DEPRECATION NOTICE: This rw-super-linter.yaml workflow is deprecated."
+          echo "🔄 This workflow remains functional but is deprecated."
+          echo "   Future updates will focus on composite actions where applicable."
+          echo ""
+          echo "For more information, see: https://github.com/GigaTech-net/public-reusable-workflows#composite-actions"
+
   super-lint:
     name: Super-Linter
     runs-on: ${{ inputs.runnerOS }}
+    needs: deprecation-notice
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
         with:
           # Full git history is needed to get a proper list of changed files within super-linter
           fetch-depth: 0
+          persist-credentials: false
 
       #############################
       # custom DEFAULT_BRANCH for repos where PR target isn't always main/master
       #############################
-      - name: Set DEFAULT_BRANCH to PR target
+      - name: Set DEFAULT_BRANCH to PR base
         # if base_ref has a value, this is a PR
-        # we save the PR target branch name to a variable for use in linter config
-        # we pass string between job steps by echoing to $GITHUB_ENV, making it available in $env later
+        # we need to save the PR base branch name to a variable for use in linter config later
+        # we pass strings between job steps by echoing to $GITHUB_ENV, making it available in $env later
         if: ${{ github.base_ref != '' }}
         run: |
           # shellcheck disable=2086
-          echo "DEFAULT_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
-          echo "this is a PR branch. Let's only lint the files that are changed against the target branch '${{ github.base_ref }}'"
+          echo "DEFAULT_BRANCH=${GITHUB_BASE_REF}" >> $GITHUB_ENV
+          echo "this is a PR branch. Let's only lint the files that are changed against the target branch '${GITHUB_BASE_REF}'"
 
       - name: Set DEFAULT_BRANCH to current branch
         # if base_ref has no value, this is just a commit on a branch
@@ -77,8 +83,10 @@ jobs:
         if: ${{ github.base_ref == '' }}
         run: |
           # shellcheck disable=2086
-          echo "DEFAULT_BRANCH=$(echo '${{ github.ref }}' | sed 's/refs\/heads\///')" >> $GITHUB_ENV
-          echo "this is just a branch push to branch '${{ github.ref }}', not a PR."
+          {
+            echo "DEFAULT_BRANCH=$(echo "${GITHUB_REF}" | sed 's/refs\/heads\///')" >> $GITHUB_ENV
+            echo "this is just a branch push to branch '${GITHUB_REF}', not a PR."
+          }
 
       # used as a debug step to ensure we're only linting all files on release branches
       - name: Are we linting all files?
@@ -123,46 +131,26 @@ jobs:
             echo "VALIDATE_YAML=true";
           } >> $GITHUB_ENV
 
-      - name: Disable linting for forked repos
-        if: ${{ inputs.forkedRepoLIntRestriction == true }}
-        run: |
-          # shellcheck disable=2086
-          { 
-            echo "VALIDATE_BASH=false";
-            echo "VALIDATE_BIOME_FORMAT=false";
-            echo "VALIDATE_BIOME_LINT=false";
-            echo "VALIDATE_SHELL_SHFMT=false";
-            echo "VALIDATE_EDITORCONFIG=false";
-            echo "VALIDATE_CLOUDFORMATION=false";
-            echo "VALIDATE_NATURAL_LANGUAGE=false";
-            echo "VALIDATE_TYPESCRIPT_STANDARD=false";
-            echo "VALIDATE_TYPESCRIPT_PRETTIER=false";
-            echo "VALIDATE_JAVASCRIPT_PRETTIER=false";
-            echo "VALIDATE_GITLEAKS=false";
-            echo "VALIDATE_BASH_EXEC=false";
-            echo "VALIDATE_MARKDOWN=false";
-            echo "VALIDATE_CHECKOV=false";
-            echo "VALIDATE_JAVASCRIPT_STANDARD=false";
-            echo "VALIDATE_TERRAFORM_TFLINT=false";
-            echo "VALIDATE_TRIVY=false";
-            echo "VALIDATE_JSON_PRETTIER=false";
-            echo "VALIDATE_MARKDOWN_PRETTIER=false";
-            echo "VALIDATE_YAML_PRETTIER=false";
-          } >> $GITHUB_ENV
-
       - name: debug env for super linter
         run: |
           # shellcheck disable=2086
           {
-            echo "DEFAULT_BRANCH=${{ env.DEFAULT_BRANCH }}";
-            echo "PR=${{ github.base_ref }}"
-            echo "BRANCH=${{ github.ref }}"
-            echo "VALIDATE_ALL_CODEBASE${{ !contains(github.event_name, 'pull_request') }}"
+            echo "DEFAULT_BRANCH=${DEFAULT_BRANCH}";
+            echo "PR=${GITHUB_BASE_REF}"
+            echo "BRANCH=${GITHUB_REF}"
+            echo "VALIDATE_ALL_CODEBASE=${{ !contains(github.event_name, 'pull_request') }}"
           }
 
       - name: Determine if this is the main branch (edge case for tagged release workflows)
         run: |
-          git fetch --all
+          # The checkout above sets persist-credentials: false, so this fetch
+          # has no credentials and exits 128 on private repos -- which under
+          # `bash -e` failed the whole job. It has been doing so on every PR in
+          # the IG repos since at least 2026-06. Degrade instead: fall back to
+          # the refs checkout already fetched. Worst case IS_MAIN_BRANCH is
+          # false and we lint when we could have skipped, which is the safe
+          # direction.
+          git fetch --all || echo "no credentials for fetch; using local refs"
           BRANCHES=$(git branch -r --contains "${{ github.sha }}" | sed 's|origin/||')
           if [[ "${BRANCHES}" == *"main"* ]]; then
             echo "IS_MAIN_BRANCH=true" >> "$GITHUB_ENV"

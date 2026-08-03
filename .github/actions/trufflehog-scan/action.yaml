@@ -33,11 +33,13 @@ runs:
       run: |
         echo "⚠️  WARNING: This TruffleHog scan action is deprecated."
         echo "🔄 Please use the secret-scan action instead:"
-        echo "   uses: GigaTech-net/reusable-workflows/.github/actions/secret-scan@main"
+        echo "   uses: GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1"
 
     - name: Confirm correct branch to scan
       shell: bash
-      run: echo "Preparing to scan branch ${{ inputs.head_ref }}"
+      env:
+        HEAD_REF: ${{ inputs.head_ref }}
+      run: echo "Preparing to scan branch $HEAD_REF"
 
     - name: Perform TruffleHog scan to detect leaked credentials & secrets
       id: scan
