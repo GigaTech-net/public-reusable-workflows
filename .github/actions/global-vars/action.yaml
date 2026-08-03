@@ -78,7 +78,9 @@ runs:
     - name: Debug output file
       id: debug-output
       shell: bash
+      env:
+        TARGET_DIR: ${{ inputs.target_dir }}
       run: |
         echo "=== Contents of global_vars.hcl ==="
-        cat "${{ inputs.target_dir }}global_vars.hcl" || echo "File not found"
-        echo "output-path=${{ inputs.target_dir }}global_vars.hcl" >> $GITHUB_OUTPUT
+        cat "${TARGET_DIR}global_vars.hcl" || echo "File not found"
+        echo "output-path=${TARGET_DIR}global_vars.hcl" >> $GITHUB_OUTPUT

@@ -1,5 +1,5 @@
 ---
-name: Spellcheck
+name: Spellcheck (deprecated)
 
 on:
   workflow_call:
@@ -17,22 +17,9 @@ permissions:
   contents: write
 
 jobs:
-  deprecation-notice:
-    name: Deprecation Notice
-    runs-on: ubuntu-latest
-    steps:
-      - name: Display Deprecation Warning
-        run: |
-          echo "⚠️  DEPRECATION NOTICE: This rw-spellcheck.yaml workflow is deprecated."
-          echo "🔄 Please use the appropriate composite action instead:"
-          echo "   uses: GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@v1"
-          echo ""
-          echo "For more information, see: https://github.com/GigaTech-net/public-reusable-workflows#composite-actions"
-
   spellcheck:
     name: Spell check
     runs-on: ubuntu-latest
-    needs: deprecation-notice
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -56,18 +43,10 @@ jobs:
             fi
           }
 
-      # Keep the venv and the dictionary out of the checkout -- some repos track
-      # a `venv/` directory, and creating one in the working tree rewrites those
-      # tracked files. See .github/actions/spellcheck.
       - name: Install codespell
-        run: |
-          {
-            python3 -m venv "${RUNNER_TEMP}/codespell-venv"
-            # shellcheck disable=SC1091
-            source "${RUNNER_TEMP}/codespell-venv/bin/activate"
-            pip install codespell
-          }
+        run: pip install codespell
 
+      # Keep the dictionary out of the checkout. See .github/actions/spellcheck.
       - name: Unpack and use codespell autocorrect dictionary
         run: |
           wget -q -O "${RUNNER_TEMP}/dictionary.txt" \
@@ -79,14 +58,13 @@ jobs:
           WORDS_TO_IGNORE: ${{ inputs.wordsToIgnore }}
           WRITE_CHANGES: ${{ steps.extract_branch.outputs.write_changes }}
         run: |
-          # shellcheck disable=SC1091,SC2086
+          # shellcheck disable=SC2086
           {
-            source "${RUNNER_TEMP}/codespell-venv/bin/activate"
             codespell \
               -D "${RUNNER_TEMP}/dictionary.txt" \
               --count \
               --quiet-level 2 \
-              --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,.gitignore,./src,./venv,.dockerignore,Dockerfile,package.json,package-lock.json,$FILES_TO_IGNORE" \
+              --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,$FILES_TO_IGNORE" \
               -L "ehr,requestor,promis,loinc,recengine,sdvosb,$WORDS_TO_IGNORE" \
               $WRITE_CHANGES
           }

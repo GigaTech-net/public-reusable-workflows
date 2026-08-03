@@ -50,18 +50,23 @@ runs:
 
     - name: Fetch Base Branch
       shell: bash
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
       run: |
-        git fetch origin ${{ inputs.base-branch }}:${{ inputs.base-branch }}
+        git fetch origin "$BASE_BRANCH:$BASE_BRANCH"
 
     - name: Check for Changes
       id: check-changes
       shell: bash
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
       run: |
-        if git diff --quiet ${{ inputs.base-branch }}...${{ inputs.head-branch }}; then
-          echo "No changes detected between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}"
+        if git diff --quiet "$BASE_BRANCH...$HEAD_BRANCH"; then
+          echo "No changes detected between $HEAD_BRANCH and $BASE_BRANCH"
           echo "changes-detected=false" >> $GITHUB_OUTPUT
         else
-          echo "Changes detected between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}"
+          echo "Changes detected between $HEAD_BRANCH and $BASE_BRANCH"
           echo "changes-detected=true" >> $GITHUB_OUTPUT
         fi
 
@@ -69,12 +74,15 @@ runs:
       id: conflict-check
       shell: bash
       if: steps.check-changes.outputs.changes-detected == 'true'
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
       run: |
         # Create a temporary branch to test merge
-        git checkout -b temp-merge-test ${{ inputs.base-branch }}
+        git checkout -b temp-merge-test "$BASE_BRANCH"
 
         # Attempt to merge and capture result
-        if git merge --no-commit --no-ff ${{ inputs.head-branch }} 2>/dev/null; then
+        if git merge --no-commit --no-ff "$HEAD_BRANCH" 2>/dev/null; then
           echo "No merge conflicts detected"
           echo "conflicts-detected=false" >> $GITHUB_OUTPUT
           git merge --abort 2>/dev/null || true
@@ -82,23 +90,26 @@ runs:
           echo "Merge conflicts detected"
           echo "conflicts-detected=true" >> $GITHUB_OUTPUT
           git merge --abort 2>/dev/null || true
-          
+
           # Get list of conflicted files
-          git merge ${{ inputs.head-branch }} --no-commit --no-ff || true
+          git merge "$HEAD_BRANCH" --no-commit --no-ff || true
           conflicted_files=$(git diff --name-only --diff-filter=U | tr '\n' ',' | sed 's/,$//')
           echo "conflicted-files=${conflicted_files}" >> $GITHUB_OUTPUT
           git merge --abort 2>/dev/null || true
         fi
 
         # Clean up temporary branch
-        git checkout ${{ inputs.head-branch }}
+        git checkout "$HEAD_BRANCH"
         git branch -D temp-merge-test
 
     - name: Handle Merge Conflicts
       shell: bash
       if: steps.conflict-check.outputs.conflicts-detected == 'true'
+      env:
+        CONFLICT_STRATEGY: ${{ inputs.conflict-strategy }}
+        CONFLICTED_FILES: ${{ steps.conflict-check.outputs.conflicted-files }}
       run: |
-        case "${{ inputs.conflict-strategy }}" in
+        case "$CONFLICT_STRATEGY" in
           "skip")
             echo "::warning::Merge conflicts detected. Skipping PR creation as requested."
             echo "skip-pr=true" >> $GITHUB_OUTPUT
@@ -110,7 +121,7 @@ runs:
             echo "skip-pr=true" >> $GITHUB_OUTPUT
             ;;
           *)
-            echo "::error::Merge conflicts detected in files: ${{ steps.conflict-check.outputs.conflicted-files }}"
+            echo "::error::Merge conflicts detected in files: $CONFLICTED_FILES"
             echo "::error::Please resolve conflicts manually before creating PR."
             echo "skip-pr=true" >> $GITHUB_OUTPUT
             ;;
@@ -122,9 +133,11 @@ runs:
       if: steps.check-changes.outputs.changes-detected == 'true' && steps.conflict-check.outputs.conflicts-detected != 'true'
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
       run: |
         # Check for existing open PRs with same head and base
-        existing_pr=$(gh pr list --state open --base ${{ inputs.base-branch }} --head ${{ inputs.head-branch }} --json number,url --jq '.[0]')
+        existing_pr=$(gh pr list --state open --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --json number,url --jq '.[0]')
 
         if [ "$existing_pr" != "null" ] && [ -n "$existing_pr" ]; then
           pr_number=$(echo "$existing_pr" | jq -r '.number')
@@ -144,23 +157,24 @@ runs:
       if: steps.check-changes.outputs.changes-detected == 'true' && steps.conflict-check.outputs.conflicts-detected != 'true' && steps.check-existing-prs.outputs.existing-pr == 'false'
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        DELAY_SECONDS: ${{ inputs.delay-seconds }}
       run: |
         # Calculate the cutoff time (current time minus delay-seconds)
-        cutoff_time=$(date -u -d "${{ inputs.delay-seconds }} seconds ago" '+%Y-%m-%dT%H:%M:%SZ')
+        cutoff_time=$(date -u -d "$DELAY_SECONDS seconds ago" '+%Y-%m-%dT%H:%M:%SZ')
         echo "Checking for PRs created after: ${cutoff_time}"
 
         # Check for any PRs created within the delay period
-        recent_prs=$(gh pr list --state all --limit 50 --json number,createdAt,url --jq "[.[] | select(.createdAt > \"${cutoff_time}\")]") 
+        recent_prs=$(gh pr list --state all --limit 50 --json number,createdAt,url --jq "[.[] | select(.createdAt > \"${cutoff_time}\")]")
 
         if [ "$recent_prs" != "[]" ] && [ -n "$recent_prs" ]; then
           pr_count=$(echo "$recent_prs" | jq 'length')
-          echo "Found ${pr_count} PR(s) created within the last ${{ inputs.delay-seconds }} seconds"
+          echo "Found ${pr_count} PR(s) created within the last $DELAY_SECONDS seconds"
           echo "Recent PRs:"
           echo "$recent_prs" | jq -r '.[] | "  - PR #\(.number): \(.url) (created: \(.createdAt))"'
           echo "recent-prs-found=true" >> $GITHUB_OUTPUT
-          echo "::warning::Skipping PR creation due to recent PR activity within ${{ inputs.delay-seconds }} seconds"
+          echo "::warning::Skipping PR creation due to recent PR activity within $DELAY_SECONDS seconds"
         else
-          echo "No recent PRs found within the last ${{ inputs.delay-seconds }} seconds"
+          echo "No recent PRs found within the last $DELAY_SECONDS seconds"
           echo "recent-prs-found=false" >> $GITHUB_OUTPUT
         fi
 
@@ -168,6 +182,13 @@ runs:
       id: generate-summary
       shell: bash
       if: steps.check-changes.outputs.changes-detected == 'true' && steps.conflict-check.outputs.conflicts-detected != 'true' && steps.check-existing-prs.outputs.existing-pr == 'false' && steps.check-recent-prs.outputs.recent-prs-found == 'false'
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+        PR_DESCRIPTION: ${{ inputs.pr-description }}
+        SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
       run: |
         # Generate summary of changes
         echo "## Summary of Changes" > pr_body.md
@@ -175,36 +196,36 @@ runs:
 
         # Get commit messages between branches
         echo "### Recent Commits" >> pr_body.md
-        git log ${{ inputs.base-branch }}..${{ inputs.head-branch }} --oneline --no-merges -n 10 >> pr_body.md
+        git log "$BASE_BRANCH..$HEAD_BRANCH" --oneline --no-merges -n 10 >> pr_body.md
         echo "" >> pr_body.md
 
         # Get file changes
         echo "### Files Changed" >> pr_body.md
-        changed_files=$(git diff --name-only ${{ inputs.base-branch }}..${{ inputs.head-branch }} | wc -l)
+        changed_files=$(git diff --name-only "$BASE_BRANCH..$HEAD_BRANCH" | wc -l)
         echo "- **${changed_files}** files modified" >> pr_body.md
         echo "" >> pr_body.md
 
         # List changed files (limit to 20)
         echo "#### Modified Files:" >> pr_body.md
-        git diff --name-only ${{ inputs.base-branch }}..${{ inputs.head-branch }} | head -20 | sed 's/^/- /' >> pr_body.md
+        git diff --name-only "$BASE_BRANCH..$HEAD_BRANCH" | head -20 | sed 's/^/- /' >> pr_body.md
 
-        if [ $(git diff --name-only ${{ inputs.base-branch }}..${{ inputs.head-branch }} | wc -l) -gt 20 ]; then
-          echo "- ... and $(($(git diff --name-only ${{ inputs.base-branch }}..${{ inputs.head-branch }} | wc -l) - 20)) more files" >> pr_body.md
+        if [ "$(git diff --name-only "$BASE_BRANCH..$HEAD_BRANCH" | wc -l)" -gt 20 ]; then
+          echo "- ... and $(($(git diff --name-only "$BASE_BRANCH..$HEAD_BRANCH" | wc -l) - 20)) more files" >> pr_body.md
         fi
 
         echo "" >> pr_body.md
 
         # Add CI/CD information
         echo "### CI/CD Status" >> pr_body.md
-        echo "- 🔄 **Workflow Run**: [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> pr_body.md
+        echo "- 🔄 **Workflow Run**: [View Details]($SERVER_URL/$REPOSITORY/actions/runs/$RUN_ID)" >> pr_body.md
         echo "- 📊 **Build Status**: Will be updated after PR creation" >> pr_body.md
         echo "- 🧪 **Tests**: Will run automatically on PR creation" >> pr_body.md
         echo "" >> pr_body.md
 
         # Add additional description if provided
-        if [ -n "${{ inputs.pr-description }}" ]; then
+        if [ -n "$PR_DESCRIPTION" ]; then
           echo "### Additional Notes" >> pr_body.md
-          echo "${{ inputs.pr-description }}" >> pr_body.md
+          echo "$PR_DESCRIPTION" >> pr_body.md
           echo "" >> pr_body.md
         fi
 
@@ -217,14 +238,17 @@ runs:
       id: generate-title
       shell: bash
       if: steps.check-changes.outputs.changes-detected == 'true' && steps.conflict-check.outputs.conflicts-detected != 'true' && steps.check-existing-prs.outputs.existing-pr == 'false' && steps.check-recent-prs.outputs.recent-prs-found == 'false'
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
       run: |
         # Generate conventional commit title with chore: prefix
         # Analyze the type of changes to create a descriptive phrase
 
         # Count different types of changes
-        added_files=$(git diff --name-status ${{ inputs.base-branch }}..${{ inputs.head-branch }} | grep -c "^A" || echo "0")
-        modified_files=$(git diff --name-status ${{ inputs.base-branch }}..${{ inputs.head-branch }} | grep -c "^M" || echo "0")
-        deleted_files=$(git diff --name-status ${{ inputs.base-branch }}..${{ inputs.head-branch }} | grep -c "^D" || echo "0")
+        added_files=$(git diff --name-status "$BASE_BRANCH..$HEAD_BRANCH" | grep -c "^A" || echo "0")
+        modified_files=$(git diff --name-status "$BASE_BRANCH..$HEAD_BRANCH" | grep -c "^M" || echo "0")
+        deleted_files=$(git diff --name-status "$BASE_BRANCH..$HEAD_BRANCH" | grep -c "^D" || echo "0")
 
         # Determine the primary type of change
         if [ "$added_files" -gt "$modified_files" ] && [ "$added_files" -gt "$deleted_files" ]; then
@@ -238,7 +262,7 @@ runs:
         fi
 
         # Create title
-        pr_title="chore: maint - ${change_type} from ${{ inputs.head-branch }} to ${{ inputs.base-branch }}"
+        pr_title="chore: maint - ${change_type} from $HEAD_BRANCH to $BASE_BRANCH"
         echo "pr-title=${pr_title}" >> $GITHUB_OUTPUT
         echo "Generated PR title: ${pr_title}"
 
@@ -248,12 +272,15 @@ runs:
       if: steps.check-changes.outputs.changes-detected == 'true' && steps.conflict-check.outputs.conflicts-detected != 'true' && steps.check-existing-prs.outputs.existing-pr == 'false' && steps.check-recent-prs.outputs.recent-prs-found == 'false'
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+        PR_TITLE: ${{ steps.generate-title.outputs.pr-title }}
       run: |
         # Create the PR
         pr_url=$(gh pr create \
-          --base "${{ inputs.base-branch }}" \
-          --head "${{ inputs.head-branch }}" \
-          --title "${{ steps.generate-title.outputs.pr-title }}" \
+          --base "$BASE_BRANCH" \
+          --head "$HEAD_BRANCH" \
+          --title "$PR_TITLE" \
           --body-file pr_body.md)
 
         # Extract PR number from URL
@@ -267,23 +294,33 @@ runs:
 
     - name: Summary Output
       shell: bash
+      env:
+        DELAY_SECONDS: ${{ inputs.delay-seconds }}
+        CHANGES_DETECTED: ${{ steps.check-changes.outputs.changes-detected }}
+        CONFLICTS_DETECTED: ${{ steps.conflict-check.outputs.conflicts-detected }}
+        EXISTING_PR: ${{ steps.check-existing-prs.outputs.existing-pr }}
+        RECENT_PRS_FOUND: ${{ steps.check-recent-prs.outputs.recent-prs-found }}
+        PR_CREATED: ${{ steps.create-pr.outputs.pr-created }}
+        PR_NUMBER: ${{ steps.create-pr.outputs.pr-number }}
+        PR_URL: ${{ steps.create-pr.outputs.pr-url }}
+        EXISTING_PR_URL: ${{ steps.check-existing-prs.outputs.existing-pr-url }}
       run: |
         echo "## Create PR Action Summary"
-        echo "- **Changes Detected**: ${{ steps.check-changes.outputs.changes-detected }}"
-        echo "- **Conflicts Detected**: ${{ steps.conflict-check.outputs.conflicts-detected || 'false' }}"
-        echo "- **Existing PR Found**: ${{ steps.check-existing-prs.outputs.existing-pr || 'false' }}"
-        echo "- **Recent PRs Found**: ${{ steps.check-recent-prs.outputs.recent-prs-found || 'false' }}"
-        echo "- **PR Created**: ${{ steps.create-pr.outputs.pr-created || 'false' }}"
+        echo "- **Changes Detected**: $CHANGES_DETECTED"
+        echo "- **Conflicts Detected**: ${CONFLICTS_DETECTED:-false}"
+        echo "- **Existing PR Found**: ${EXISTING_PR:-false}"
+        echo "- **Recent PRs Found**: ${RECENT_PRS_FOUND:-false}"
+        echo "- **PR Created**: ${PR_CREATED:-false}"
 
-        if [ "${{ steps.create-pr.outputs.pr-created }}" == "true" ]; then
-          echo "- **PR Number**: ${{ steps.create-pr.outputs.pr-number }}"
-          echo "- **PR URL**: ${{ steps.create-pr.outputs.pr-url }}"
+        if [ "$PR_CREATED" == "true" ]; then
+          echo "- **PR Number**: $PR_NUMBER"
+          echo "- **PR URL**: $PR_URL"
         fi
 
-        if [ "${{ steps.check-existing-prs.outputs.existing-pr }}" == "true" ]; then
-          echo "- **Existing PR**: ${{ steps.check-existing-prs.outputs.existing-pr-url }}"
+        if [ "$EXISTING_PR" == "true" ]; then
+          echo "- **Existing PR**: $EXISTING_PR_URL"
         fi
 
-        if [ "${{ steps.check-recent-prs.outputs.recent-prs-found }}" == "true" ]; then
-          echo "- **Reason**: Skipped due to recent PR activity within ${{ inputs.delay-seconds }} seconds"
+        if [ "$RECENT_PRS_FOUND" == "true" ]; then
+          echo "- **Reason**: Skipped due to recent PR activity within $DELAY_SECONDS seconds"
         fi

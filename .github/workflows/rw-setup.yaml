@@ -20,15 +20,29 @@ on:
         description: "Pre-release label of the incremented version"
         value: ${{ jobs.setup.outputs.pre-release-label }}
       branch:
-        description: "the current GitHub branch"
+        description: "The current GitHub branch"
         value: ${{ jobs.setup.outputs.branch }}
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
+  deprecation-notice:
+    name: Deprecation Notice
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Deprecation Warning
+        run: |
+          echo "⚠️  DEPRECATION NOTICE: This rw-setup.yaml workflow is deprecated."
+          echo "🔄 Please use the appropriate composite action instead:"
+          echo "   uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@v1"
+          echo ""
+          echo "For more information, see: https://github.com/GigaTech-net/public-reusable-workflows#composite-actions"
+
   setup:
     name: Setup
     runs-on: ubuntu-latest
+    needs: deprecation-notice
     outputs:
       current-version: ${{ steps.determine-semver.outputs.current-version }}
       current-v-version: ${{ steps.determine-semver.outputs.current-v-version }}

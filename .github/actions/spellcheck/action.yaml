@@ -20,58 +20,90 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Extract branch name
+    # On a push, GITHUB_REF is refs/heads/<branch> and the checkout is that
+    # branch, so corrections can be written back.
+    #
+    # On a pull_request, GITHUB_REF is refs/pull/<n>/merge -- a ref that cannot
+    # be pushed to, and a checkout that is the PR head *merged into the base*.
+    # Committing there and pushing to the head branch would drag every base
+    # commit into the PR. So on a PR we report instead of correcting, and leave
+    # `branch` empty to skip the commit step entirely.
+    - name: Determine whether corrections can be written back
       id: extract_branch
       shell: bash
       run: |
-        # shellcheck disable=SC2116,SC2016,SC2086
+        # shellcheck disable=SC2086
         {
-          echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+            echo "write_changes=--write-changes" >> $GITHUB_OUTPUT
+          else
+            echo "not on a branch (${GITHUB_REF}) - reporting only"
+            echo "branch=" >> $GITHUB_OUTPUT
+            echo "write_changes=" >> $GITHUB_OUTPUT
+          fi
         }
 
+    # Both the venv and the dictionary live in RUNNER_TEMP, never in the
+    # checkout. IG-Template and cnhm-ig track a `venv/` directory in git, so
+    # creating one in the working tree rewrote 100+ tracked .pyc files and the
+    # commit step below swept them up as if they were spelling corrections.
     - name: Install codespell
       shell: bash
       run: |
         {
-          python3 -m venv venv
-          source venv/bin/activate
+          python3 -m venv "${RUNNER_TEMP}/codespell-venv"
+          # shellcheck disable=SC1091
+          source "${RUNNER_TEMP}/codespell-venv/bin/activate"
           pip install codespell
         }
 
     - name: Unpack and use codespell autocorrect dictionary
       shell: bash
-      run: wget https://raw.githubusercontent.com/codespell-project/codespell/master/codespell_lib/data/dictionary.txt
+      run: |
+        wget -q -O "${RUNNER_TEMP}/dictionary.txt" \
+          https://raw.githubusercontent.com/codespell-project/codespell/master/codespell_lib/data/dictionary.txt
 
     - name: Run spellcheck
       shell: bash
+      env:
+        FILES_TO_IGNORE: ${{ inputs.filesToIgnore }}
+        WORDS_TO_IGNORE: ${{ inputs.wordsToIgnore }}
+        WRITE_CHANGES: ${{ steps.extract_branch.outputs.write_changes }}
       run: |
+        # shellcheck disable=SC1091,SC2086
         {
-          source venv/bin/activate
+          source "${RUNNER_TEMP}/codespell-venv/bin/activate"
           codespell \
-            -D dictionary.txt \
+            -D "${RUNNER_TEMP}/dictionary.txt" \
             --count \
             --quiet-level 2 \
-            --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,.gitignore,./src,./venv,.dockerignore,Dockerfile,package.json,package-lock.json,${{ inputs.filesToIgnore }}" \
-            -L ehr,requestor,promis,loinc,recengine,sdvosb,${{ inputs.wordsToIgnore }} \
-            --write-changes
-          rm dictionary.txt
+            --skip "./output,./input-cache,./temp,./template,./fsh-generated,./dictionary.txt,.gitignore,./src,./venv,.dockerignore,Dockerfile,package.json,package-lock.json,$FILES_TO_IGNORE" \
+            -L "ehr,requestor,promis,loinc,recengine,sdvosb,$WORDS_TO_IGNORE" \
+            $WRITE_CHANGES
         }
 
     - name: Commit changes
       if: steps.extract_branch.outputs.branch != ''
       shell: bash
+      env:
+        BRANCH_NAME: ${{ steps.extract_branch.outputs.branch }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
         {
-          BRANCH_NAME=${{ steps.extract_branch.outputs.branch }}
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -A
+          # -u stages tracked files only, never stray untracked build output.
+          # core.fileMode=false stops a runner-side permission-bit difference
+          # from being mistaken for a correction. Together with keeping the
+          # venv out of the checkout, this is what prevents the "100 files
+          # changed, 0 insertions(+), 0 deletions(-)" commits.
+          git config core.fileMode false
+          git add -u
           if git diff-index --quiet HEAD --; then
             echo "No changes to commit"
           else
             git commit -m "fix: automatic spelling correction on branch $BRANCH_NAME"
-            git push origin $BRANCH_NAME
+            git push origin "HEAD:refs/heads/$BRANCH_NAME"
           fi
         }
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}

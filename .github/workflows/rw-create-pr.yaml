@@ -1,5 +1,15 @@
 ---
-name: Create Pull Request
+name: Create Pull Request (DEPRECATED)
+
+# ⚠️  DEPRECATION NOTICE ⚠️
+# This reusable workflow is DEPRECATED and will be removed in a future version.
+# Please migrate to the new composite action: ./.github/actions/create-pr
+#
+# Migration Guide:
+# OLD: uses: ./.github/workflows/rw-create-pr.yaml
+# NEW: uses: ./.github/actions/create-pr
+#
+# See: ./.github/actions/create-pr/README.md for full documentation
 
 on:
   workflow_call:
@@ -28,45 +38,60 @@ jobs:
         with:
           ref: ${{ inputs.head-branch }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Check for Changes
+      - name: Check for changes between branches
         id: check_changes
         run: |
           # shellcheck disable=SC2116,SC2016,SC2086
           {
             changes_detected=true
-            git fetch origin ${{ inputs.base-branch }}:${{ inputs.base-branch }}
-            if git diff --quiet ${{ inputs.base-branch }}...${{ inputs.head-branch }}; then
-              echo "No changes detected between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+            git fetch origin ${BASE_BRANCH}:${BASE_BRANCH}
+            if git diff --quiet ${BASE_BRANCH}...${HEAD_BRANCH}; then
+              echo "No changes detected between ${HEAD_BRANCH} and ${BASE_BRANCH}."
               changes_detected=false
             else
-              echo "Changes detected between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+              echo "Changes detected between ${HEAD_BRANCH} and ${BASE_BRANCH}."
               changes_detected=true
             fi
               echo "changes_detected=${changes_detected}" >> $GITHUB_OUTPUT
           }
+        env:
+          BASE_BRANCH: ${{ inputs.base-branch }}
+          HEAD_BRANCH: ${{ inputs.head-branch }}
 
       - name: Check for Existing Open PRs
         id: check_existing_prs
         env:
           GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+          BASE_BRANCH: ${{ inputs.base-branch }}
+          HEAD_BRANCH: ${{ inputs.head-branch }}
         run: |
           # shellcheck disable=SC2116,SC2016,SC2086
           {
             open_pr=false
-            if gh pr list --state open --base ${{ inputs.base-branch }} --head ${{ inputs.head-branch }} | grep -q .; then
-              echo "Open PR already exists bewteen ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+            if gh pr list --state open --base ${BASE_BRANCH} --head ${HEAD_BRANCH} | grep -q .; then
+              echo "Open PR already exists bewteen ${HEAD_BRANCH} and ${BASE_BRANCH}."
               open_pr=true
             else
-              echo "No open PR exists between ${{ inputs.head-branch }} and ${{ inputs.base-branch }}."
+              echo "No open PR exists between ${HEAD_BRANCH} and ${BASE_BRANCH}."
               open_pr=false
             fi
             echo "open_pr=${open_pr}" >> $GITHUB_OUTPUT
           }
 
-      - name: Create PR
+      - name: Deprecation Warning
+        run: |
+          echo "::warning::This reusable workflow is DEPRECATED!"
+          echo "::warning::Please migrate to the new composite action: ./.github/actions/create-pr"
+          echo "::warning::See ./.github/actions/create-pr/README.md for migration guide"
+          echo "::warning::This workflow will be removed in a future version"
+
+      - name: Create PR (Legacy)
         if: steps.check_changes.outputs.changes_detected == 'true' && steps.check_existing_prs.outputs.open_pr == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+          BASE_BRANCH: ${{ inputs.base-branch }}
+          HEAD_BRANCH: ${{ inputs.head-branch }}
         run: |
-          echo -e "This pull request may merge: \n- Latest Dependencies\n- Bug Fixes\n- New Features" | gh pr create --base ${{ inputs.base-branch }} --head ${{ inputs.head-branch }} --title "feat: merge to bring ${{ inputs.base-branch }} up to date with ${{ inputs.head-branch }}" --body-file -
+          echo -e "⚠️ **DEPRECATION NOTICE** ⚠️\n\nThis PR was created using the DEPRECATED rw-create-pr.yaml workflow.\nPlease migrate to the new composite action: ./.github/actions/create-pr\n\n---\n\nThis pull request may merge: \n- Latest Dependencies\n- Bug Fixes\n- New Features" | gh pr create --base "${BASE_BRANCH}" --head "${HEAD_BRANCH}" --title "feat: hotfix : merge to bring ${BASE_BRANCH} up to date with ${HEAD_BRANCH}" --body-file -

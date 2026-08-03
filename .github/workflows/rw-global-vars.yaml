@@ -1,0 +1,87 @@
+name: Create Global Vars
+
+on:
+  workflow_call:
+    inputs:
+      prefix:
+        required: true
+        type: string
+      createdby:
+        required: true
+        type: string
+      createdbytag:
+        required: true
+        type: string
+      costcentertag:
+        required: true
+        type: string
+      appnametag:
+        required: true
+        type: string
+      envnametag:
+        required: true
+        type: string
+      gt_fhir_domain:
+        required: true
+        type: string
+      gt_api_domain:
+        required: false
+        type: string
+        default: "api.gigatech.net"
+      pm_gateway_domain:
+        required: true
+        type: string
+      target_dir:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    env:
+      PREFIX: ${{ inputs.prefix }}
+      CREATEDBY: ${{ inputs.createdby }}
+      CREATEDBYTAG: ${{ inputs.createdbytag }}
+      COSTCENTERTAG: ${{ inputs.costcentertag }}
+      APPNAMETAG: ${{ inputs.appnametag }}
+      ENVNAMETAG: ${{ inputs.envnametag }}
+      GT_FHIR_DOMAIN: ${{ inputs.gt_fhir_domain }}
+      GT_API_DOMAIN: ${{ inputs.gt_api_domain }}
+      PM_GATEWAY_DOMAIN: ${{ inputs.pm_gateway_domain }}
+      TARGET_DIR: ${{ inputs.target_dir }}
+      TARGET_REPO: GigaTech-net/pm-infrastructure-shared
+      SCRIPT_NAME: gen_global_vars.sh
+
+    steps:
+      - name: Deprecation Notice
+        run: |
+          echo "::warning::[DEPRECATED] This reusable workflow .github/workflows/rw-global-vars.yaml is deprecated. Please migrate to the composite action ./.github/actions/global-vars."
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Generate Global Vars (composite action)
+        uses: ./.github/actions/global-vars
+        with:
+          prefix: ${{ inputs.prefix }}
+          createdby: ${{ inputs.createdby }}
+          createdbytag: ${{ inputs.createdbytag }}
+          costcentertag: ${{ inputs.costcentertag }}
+          appnametag: ${{ inputs.appnametag }}
+          envnametag: ${{ inputs.envnametag }}
+          gt_fhir_domain: ${{ inputs.gt_fhir_domain }}
+          gt_api_domain: ${{ inputs.gt_api_domain }}
+          pm_gateway_domain: ${{ inputs.pm_gateway_domain }}
+          target_dir: ${{ inputs.target_dir }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload global_vars.hcl as artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: global-vars
+          path: ${{ env.TARGET_DIR }}global_vars.hcl
