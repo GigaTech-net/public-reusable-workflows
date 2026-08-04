@@ -129,8 +129,7 @@ jobs:
     with:
       head-branch: "development"
       base-branch: "main"
-    secrets:
-      GT_DEVSECOPS_PAT: ${{ secrets.GT_DEVSECOPS_PAT }}
+    secrets: inherit
 ```
 
 ### After (Composite Action)
@@ -140,12 +139,20 @@ jobs:
   create-pr:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup GitHub token
+        # env.GITHUB_TOKEN below is written by this step. Without it the input
+        # is empty and the action fails at its first API call.
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
       - name: Create Pull Request
         uses: ./.github/actions/create-pr
         with:
           base-branch: "main"
           head-branch: "development"
-          github-token: ${{ secrets.GT_DEVSECOPS_PAT }}
+          github-token: ${{ env.GITHUB_TOKEN }}
 ```
 
 ## Examples

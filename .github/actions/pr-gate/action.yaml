@@ -87,10 +87,31 @@ inputs:
       routine and were auto-approved before pr-gate existed; third-party majors
       are where breaking changes and supply-chain risk actually live.
 
+      The list is the set of vendors who publish actions for their OWN product, so
+      a major bump is routine maintenance rather than a supply-chain decision.
+      Derived from what this organization actually uses, not guessed:
+
+        actions, github        GitHub's own
+        docker                 build-push-action, login-action, metadata-action
+        aws-actions            configure-aws-credentials, amazon-ecr-login, ecs-*
+        hashicorp              setup-terraform
+        ruby                   setup-ruby
+        super-linter           super-linter
+        trufflesecurity        trufflehog
+        zaproxy                action-baseline, action-full-scan, action-api-scan
+        dependency-check       Dependency-Check_Action
+        azure, google-github-actions   not used today; listed preemptively
+
+      Community and individual maintainers are deliberately absent, including
+      anothrNick (42 uses of github-tag-action) -- it pushes version tags, so a
+      major there is exactly the kind of change a human should read.
+
       Deliberately does NOT include GigaTech-net: a major of our own shared CI is
       breaking by definition and must be read by a human.
     required: false
-    default: "actions,github"
+    default: >-
+      actions,github,docker,aws-actions,hashicorp,ruby,super-linter,
+      trufflesecurity,zaproxy,dependency-check,azure,google-github-actions
   bot_minor_patch_bypasses_sensitive_paths:
     description: |
       Allow a trusted bot's minor or patch bump to remain eligible even when it
