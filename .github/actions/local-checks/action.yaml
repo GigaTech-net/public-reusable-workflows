@@ -1,0 +1,55 @@
+---
+name: Local checks
+description: |
+  Runs the five checks CI runs -- markdownlint, yamllint, actionlint, codespell
+  and Super-Linter -- from a single definition shared with the developer's
+  machine, so "it passed locally" and "it passed CI" mean the same thing.
+
+  In CI this is one aggregate step for repositories that would rather require one
+  status check than five. Locally the same script is fetched at @v1 and piped to
+  bash; see this action's README.
+
+inputs:
+  checks:
+    description: >-
+      Comma separated subset to run: markdownlint, yamllint, actionlint,
+      codespell, super-linter. `all` runs every one.
+    required: false
+    default: "all"
+  fast:
+    description: "true skips Super-Linter, which is the only check that pulls a container image."
+    required: false
+    default: "false"
+  words_to_ignore:
+    description: >-
+      Extra codespell -L words, appended to the shared base list exactly where
+      the spellcheck action appends its wordsToIgnore. Pass the same value here
+      as that action gets, or the two disagree.
+    required: false
+    default: ""
+  files_to_ignore:
+    description: "Extra codespell --skip paths; mirrors the spellcheck action's filesToIgnore."
+    required: false
+    default: ""
+  super_linter_version:
+    description: "Super-Linter image tag. Keep in step with the super-linter action."
+    required: false
+    default: "slim-v8.6.0"
+
+runs:
+  using: composite
+  steps:
+    # The script is invoked rather than inlined so that the file CI runs is
+    # byte-identical to the file a developer runs. Inlining it here would create
+    # a second copy to keep in step, which is the class of problem this action
+    # exists to remove.
+    - name: Run the check suite
+      shell: bash
+      env:
+        CHECKS: ${{ inputs.checks }}
+        FAST: ${{ inputs.fast }}
+        WORDS_TO_IGNORE: ${{ inputs.words_to_ignore }}
+        FILES_TO_IGNORE: ${{ inputs.files_to_ignore }}
+        SUPER_LINTER_VERSION: ${{ inputs.super_linter_version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "${ACTION_PATH}/local-checks.sh"
