@@ -1,0 +1,138 @@
+---
+# Moves this repository's version tags once mirrored content lands on `main`.
+#
+# Why this exists: `mirror-public.yaml` in the private `reusable-workflows` repo
+# tags this repository only on its direct-push path. When this repository's
+# ruleset rejects that push -- which it does, because `bypass_actors` is empty --
+# the generator falls back to opening a PR and deliberately does NOT tag, since
+# at that moment the content is not published.
+#
+# Nothing then moved the tags when the PR merged. `v1` sat at v1.3.3 while `main`
+# ran four releases ahead, and every workflow in `dev` and `mercury-s3-gateway`
+# pins `@v1` -- so both public consumers stayed frozen on old content no matter
+# what was merged here. `mercury-s3-gateway` kept running a `GT_DEVSECOPS_PAT`
+# that had already been removed upstream.
+#
+# Tagging from this side closes that loop and needs no ruleset bypass: the
+# ruleset's `target` is `branch`, so pushing a tag is not governed by it. That is
+# the whole reason this is preferable to granting the App a bypass here.
+name: Tag mirrored release
+
+on:
+  push:
+    branches:
+      - main
+  # Manual run exists for two reasons: to catch up tags that were missed while
+  # this workflow did not exist (v1 is four releases behind on first install),
+  # and as an escape hatch if a push-triggered run fails. No inputs -- checkov
+  # CKV_GHA_7 forbids them, and the version must come from the commit rather
+  # than being typed by hand.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag
+    runs-on: ubuntu-latest
+    # Both publish paths produce this subject. The squash path appends "(#N)":
+    #   chore: mirror v1.3.2 from reusable-workflows
+    #   chore: mirror v1.5.1 from reusable-workflows (#38)
+    # Anything else pushed to main -- a hand edit, a docs change -- is ignored.
+    # A folded scalar, not a bare value: the literal contains ": ", which YAML
+    # reads as a nested mapping in a plain scalar and refuses to parse.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore: mirror v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history and tags: the version check below compares an existing
+          # tag against HEAD, which a shallow clone cannot resolve.
+          fetch-depth: 0
+
+      - name: Resolve the mirrored version
+        id: v
+        env:
+          # Read through `env`, never interpolated into the script body. A commit
+          # subject is attacker-influenceable, and `${{ }}` inside a `run:` block
+          # is substituted before bash sees it, so a crafted subject would run as
+          # shell. This is the pattern the audit on PRO-1282 flags 23 times
+          # elsewhere in this repository.
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          subject=${SUBJECT%%$'\n'*}
+          # On workflow_dispatch there is no head_commit, so SUBJECT is empty and
+          # the subject comes from the checked-out HEAD instead. Checkout runs
+          # first precisely so this is available.
+          if [ -z "$subject" ]; then
+            subject=$(git log -1 --format=%s)
+            echo "manual run; using HEAD subject: ${subject}"
+          fi
+          pattern='^chore: mirror (v[0-9]+\.[0-9]+\.[0-9]+) from reusable-workflows'
+          if [[ ! "$subject" =~ $pattern ]]; then
+            echo "::error::not a mirror commit subject: ${subject}"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          echo "resolved ${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "major=${version%%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Move the tags
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          MAJOR: ${{ steps.v.outputs.major }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email \
+            'github-actions[bot]@users.noreply.github.com'
+          head=$(git rev-parse HEAD)
+
+          # `^{commit}` is required, not optional. For an ANNOTATED tag,
+          # `git rev-parse refs/tags/v1` returns the tag object's sha, not the
+          # commit's -- which already caused a v1-vs-v1.4.0 mismatch to be
+          # reported that did not exist.
+          existing=$(git rev-parse -q --verify \
+            "refs/tags/${VERSION}^{commit}" || true)
+
+          if [ -z "$existing" ]; then
+            git tag "${VERSION}"
+            git push origin "refs/tags/${VERSION}"
+            echo "created ${VERSION}"
+          elif [ "$existing" = "$head" ]; then
+            # Re-run, or the generator's direct-push path already tagged. Not an
+            # error: this workflow must be idempotent because both paths can tag.
+            echo "${VERSION} already points at ${head}"
+          else
+            # Never silently repoint a release tag. Consumers pinning an exact
+            # version would have the ground moved under them.
+            echo "::error::${VERSION} exists at ${existing}, but HEAD is ${head}"
+            exit 1
+          fi
+
+          # The major tag is deliberately MOVING -- the actions/checkout
+          # convention, and what every consumer pins to.
+          git tag -f "${MAJOR}"
+          git push -f origin "refs/tags/${MAJOR}"
+          echo "moved ${MAJOR} to ${head}"
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          MAJOR: ${{ steps.v.outputs.major }}
+        run: |
+          {
+            echo "### Mirror tagged"
+            echo ""
+            echo "- Release tag: \`${VERSION}\`"
+            echo "- Major tag \`${MAJOR}\` now points at this commit"
+            echo ""
+            echo "Consumers pinning \`@${MAJOR}\` pick this up on their next run."
+          } >> "$GITHUB_STEP_SUMMARY"
