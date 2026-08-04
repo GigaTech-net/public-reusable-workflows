@@ -12,6 +12,14 @@ Generates a `global_vars.hcl` file using the `gen_global_vars.sh` script from th
 ## Usage
 
 ```yaml
+- name: Setup GitHub token
+  # env.GITHUB_TOKEN below is written by this step. Without it the input is
+  # empty and the action fails at its first API call, having lint-checked fine.
+  uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
+  with:
+    app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+    private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
 - name: Generate Global Vars
   uses: ./.github/actions/global-vars
   with:
@@ -25,7 +33,7 @@ Generates a `global_vars.hcl` file using the `gen_global_vars.sh` script from th
     gt_api_domain: api.gigatech.net
     pm_gateway_domain: gateway.gigatech.net
     target_dir: ./terraform/
-    github-token: ${{ secrets.GT_DEVSECOPS_PAT }}
+    github-token: ${{ env.GITHUB_TOKEN }}
 ```
 
 ## Inputs
@@ -71,8 +79,7 @@ jobs:
       gt_api_domain: api.gigatech.net
       pm_gateway_domain: gateway.gigatech.net
       target_dir: ./terraform/
-    secrets:
-      GT_DEVSECOPS_PAT: ${{ secrets.GT_DEVSECOPS_PAT }}
+    secrets: inherit
 ```
 
 ### After (Composite Action)
@@ -82,6 +89,14 @@ jobs:
   create-global-vars:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup GitHub token
+        # env.GITHUB_TOKEN below is written by this step. Without it the input
+        # is empty and the action fails at its first API call.
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
       - name: Generate Global Vars
         uses: ./.github/actions/global-vars
         with:
@@ -95,7 +110,7 @@ jobs:
           gt_api_domain: api.gigatech.net
           pm_gateway_domain: gateway.gigatech.net
           target_dir: ./terraform/
-          github-token: ${{ secrets.GT_DEVSECOPS_PAT }}
+          github-token: ${{ env.GITHUB_TOKEN }}
 
       - name: Upload global_vars.hcl as artifact
         uses: actions/upload-artifact@v4

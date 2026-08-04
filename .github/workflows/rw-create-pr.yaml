@@ -40,6 +40,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Qualified ref, NOT ./.github/actions/setup-token. A relative `uses:`
+      # inside a reusable workflow resolves against the CALLING repository, so a
+      # local path here looks correct and fails at "Set up job" in every consumer.
+      # The mirror rewrites this owner to public-reusable-workflows.
+      - name: Setup GitHub token
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
+        with:
+          app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
+          private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
+
       - name: Check for changes between branches
         id: check_changes
         run: |
@@ -63,7 +73,7 @@ jobs:
       - name: Check for Existing Open PRs
         id: check_existing_prs
         env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
           BASE_BRANCH: ${{ inputs.base-branch }}
           HEAD_BRANCH: ${{ inputs.head-branch }}
         run: |
@@ -90,7 +100,7 @@ jobs:
       - name: Create PR (Legacy)
         if: steps.check_changes.outputs.changes_detected == 'true' && steps.check_existing_prs.outputs.open_pr == 'false'
         env:
-          GITHUB_TOKEN: ${{ secrets.GT_DEVSECOPS_PAT }}
+          GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
           BASE_BRANCH: ${{ inputs.base-branch }}
           HEAD_BRANCH: ${{ inputs.head-branch }}
         run: |
