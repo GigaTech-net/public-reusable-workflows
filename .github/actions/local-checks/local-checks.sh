@@ -237,14 +237,33 @@ if wanted super-linter; then
 		# alongside USE_FIND_ALGORITHM=true is rejected outright --
 		# "Super-linter doesn't consider the value DEFAULT_BRANCH when not
 		# using Git."
+		#
+		# USE_FIND_ALGORITHM=true is FORCED, not optional. Without it
+		# Super-Linter enumerates files through git and needs DEFAULT_BRANCH,
+		# which it defaults to `master`. Any repository whose default branch is
+		# `main` or `development` and which has no `master` branch then aborts
+		# before linting anything:
+		#
+		#   [FATAL] Neither master, nor origin/master exist in /tmp/lint
+		#
+		# This check therefore could not run at all in most of the org. It only
+		# appeared to work because the first repositories it was tried on
+		# happen to set USE_FIND_ALGORITHM in their own env file; the IG repos
+		# and mercury-s3-gateway deliberately do not, because it is invalid
+		# alongside their CI value of VALIDATE_ALL_CODEBASE=false. Forcing both
+		# together here is the combination Super-Linter permits, and it skips
+		# git entirely.
 		ARGS=(-e RUN_LOCAL=true -e VALIDATE_ALL_CODEBASE=true
+			-e USE_FIND_ALGORITHM=true
 			-e ENABLE_GITHUB_ACTIONS_STEP_SUMMARY=false)
 		if [ -f "$envfile" ]; then
 			while IFS= read -r line || [ -n "$line" ]; do
 				case "$line" in
 				'' | \#*) continue ;;
-				# Forced above for a full local scan.
-				RUN_LOCAL=* | VALIDATE_ALL_CODEBASE=*) continue ;;
+				# Forced above for a full local scan. USE_FIND_ALGORITHM is
+				# skipped as well as set: a repo carrying `false` would
+				# otherwise override the forced value and reintroduce the abort.
+				RUN_LOCAL=* | VALIDATE_ALL_CODEBASE=* | USE_FIND_ALGORITHM=*) continue ;;
 				esac
 				ARGS+=(-e "$line")
 			done <"$envfile"

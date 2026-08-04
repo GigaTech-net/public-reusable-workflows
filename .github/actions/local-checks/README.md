@@ -105,8 +105,19 @@ action.
 - **Super-Linter publishes no `linux/arm64` image.** Apple Silicon gets
   `--platform linux/amd64` and emulates it. Slower, and the only way to reproduce
   the CI result.
-- **Do not set `DEFAULT_BRANCH` in `RUN_LOCAL` mode** alongside
-  `USE_FIND_ALGORITHM=true`; Super-Linter rejects the pair.
+- **`USE_FIND_ALGORITHM=true` is forced, and `DEFAULT_BRANCH` is deliberately
+  never set.** Without `USE_FIND_ALGORITHM`, Super-Linter enumerates files through
+  git and needs `DEFAULT_BRANCH`, which it defaults to `master` — so any repo whose
+  default is `main` or `development` with no `master` branch aborts before linting
+  anything: `[FATAL] Neither master, nor origin/master exist in /tmp/lint`. That
+  made this check unrunnable in most of the org. It only appeared to work because
+  the first repos it was tried on set the flag in their own env file; the IG repos
+  and `mercury-s3-gateway` deliberately do not, since it is invalid alongside their
+  CI value of `VALIDATE_ALL_CODEBASE=false`. Forcing both together is the
+  combination Super-Linter permits, and it skips git entirely — which is also why
+  `DEFAULT_BRANCH` must stay unset, as Super-Linter rejects that pair.
+  A consumer's own `USE_FIND_ALGORITHM` line is skipped rather than merged, so a
+  repo carrying `false` cannot reintroduce the abort.
 - **`actionlint`'s embedded shellcheck stays advisory.** It reports pre-existing
   style findings CI does not fail on. Failing on them makes the tool cry wolf and
   get ignored, which is worse than not running it.
