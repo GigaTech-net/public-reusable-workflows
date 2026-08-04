@@ -25,6 +25,15 @@ runs:
         private-key: ${{ inputs.private_key }}
         owner: ${{ inputs.owner || github.repository_owner }}
 
+    # The token goes through `env`, not `${{ }}` in the command. `${{ }}` is
+    # substituted textually before bash parses the line, so the secret became
+    # part of the command itself. A token containing a newline would have written
+    # arbitrary extra variables into $GITHUB_ENV, and the value sat on the
+    # command line rather than only in the environment. This is the single
+    # highest-value instance of that pattern in the repo, because every consumer
+    # runs this step.
     - name: Set token as environment variable
       shell: bash
-      run: echo "GITHUB_TOKEN=${{ steps.app_token.outputs.token }}" >> $GITHUB_ENV
+      env:
+        APP_TOKEN: ${{ steps.app_token.outputs.token }}
+      run: echo "GITHUB_TOKEN=${APP_TOKEN}" >> "$GITHUB_ENV"
