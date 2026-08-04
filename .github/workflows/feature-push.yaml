@@ -34,7 +34,7 @@ jobs:
       NEEDS_REVIEW_LABEL: ${{ env.NEEDS_REVIEW_LABEL }}
     steps:
       - name: Setup GitHub token
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/setup-token@v1
         with:
           app_id: ${{ secrets.KEYROTATION_APPID_GT_GH }}
           private_key: ${{ secrets.KEYROTATION_PVTKEY_GT_GH }}
@@ -47,17 +47,17 @@ jobs:
       - name: Setup workflow environment
         id: setup
         uses: >-
-          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@main
+          GigaTech-net/public-reusable-workflows/.github/actions/setup-workflow@v1
 
       # Secret scan using composite action
       - name: Secret scan
         uses: >-
-          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@main
+          GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1
 
       # Spellcheck using composite action
       - name: Spellcheck
         uses: >-
-          GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@main
+          GigaTech-net/public-reusable-workflows/.github/actions/spellcheck@v1
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
           # "iif" appears in templates/super-linter.env as the worked example
@@ -68,7 +68,7 @@ jobs:
 
       # Super Linter using composite action
       - name: Super Linter
-        uses: GigaTech-net/public-reusable-workflows/.github/actions/super-linter@main
+        uses: GigaTech-net/public-reusable-workflows/.github/actions/super-linter@v1
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
           run_local: false
