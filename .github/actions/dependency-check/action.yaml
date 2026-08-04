@@ -48,14 +48,21 @@ runs:
     - name: Validate dependency check results
       id: validate
       shell: bash
+      # Both values through `env` rather than `${{ }}` in the body. Neither is
+      # attacker-controlled -- a step outcome and the runner workspace path -- so
+      # this is consistency rather than a fix, and it keeps the whole repo
+      # scannable by one rule instead of a list of blessed exceptions.
+      env:
+        CHECK_OUTCOME: ${{ steps.dependency-check.outcome }}
+        WORKSPACE: ${{ github.workspace }}
       run: |
-        if [ "${{ steps.dependency-check.outcome }}" = "success" ]; then
+        if [ "$CHECK_OUTCOME" = "success" ]; then
           echo "Dependency check completed successfully."
           exit 0
         fi
 
         # Step failed — check if reports were still produced by other analyzers
-        REPORT_DIR="${{ github.workspace }}/reports"
+        REPORT_DIR="${WORKSPACE}/reports"
         if [ -d "$REPORT_DIR" ] && [ "$(ls -A "$REPORT_DIR" 2>/dev/null)" ]; then
           echo "::warning::Dependency check encountered errors (e.g. NPM Audit API unavailable) but reports were produced by other analyzers. Continuing with partial results."
           ls -la "$REPORT_DIR"

@@ -23,8 +23,14 @@ runs:
   steps:
     - name: Load Super Linter environment file
       shell: bash
+      # Through `env`, not `${{ }}` in the body: a caller-supplied path was being
+      # pasted into the command. Consumers now pass a second file here
+      # (.github/super-linter-push.env) for push and release builds, so this
+      # input is no longer effectively constant.
+      env:
+        ENV_FILE_PATH: ${{ inputs.env_file_path }}
       run: |
-        ENV_FILE="${{ inputs.env_file_path }}"
+        ENV_FILE="$ENV_FILE_PATH"
         if [[ -f "$ENV_FILE" ]]; then
           echo "Loading environment variables from $ENV_FILE"
           # Read the env file and export variables to GITHUB_ENV
