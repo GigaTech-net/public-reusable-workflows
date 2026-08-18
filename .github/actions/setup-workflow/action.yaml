@@ -29,7 +29,7 @@ runs:
   steps:
     - name: determine semver
       id: determine-semver
-      uses: reecetech/version-increment@2024.10.1
+      uses: reecetech/version-increment@2026.8.4
       with:
         use_api: true
         increment: minor
