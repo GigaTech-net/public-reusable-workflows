@@ -20,13 +20,13 @@ and links to itself. The upstream is `GigaTech-net/reusable-workflows`.
 
 ## Layout
 
-| Path | Holds |
-|---|---|
-| `.github/actions/*/` | mirrored composite actions — the preferred consumption pattern |
-| `.github/workflows/rw-*.yaml` | mirrored reusable workflows, kept for backward compatibility |
-| `.github/workflows/mirror-tag.yaml` | owned here; moves version tags after mirrored content lands |
-| `.github/workflows/main-pr.yaml`, `feature-push.yaml` | this repository's own CI |
-| `report/` | generated jscpd copy-paste-detection output |
+| Path                                                  | Holds                                                          |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| `.github/actions/*/`                                  | mirrored composite actions — the preferred consumption pattern |
+| `.github/workflows/rw-*.yaml`                         | mirrored reusable workflows, kept for backward compatibility   |
+| `.github/workflows/mirror-tag.yaml`                   | owned here; moves version tags after mirrored content lands    |
+| `.github/workflows/main-pr.yaml`, `feature-push.yaml` | this repository's own CI                                       |
+| `report/`                                             | generated jscpd copy-paste-detection output                    |
 
 Consumers pin `@v1`, so the major tag must actually move for a release to reach them.
 
@@ -35,7 +35,7 @@ Consumers pin `@v1`, so the major tag must actually move for a release to reach 
 `mirror-public.yaml` upstream has two paths. It tries a direct push, which **fails by
 design** — this repository's ruleset has `bypass_actors: []` like every other, so the
 GitHub App cannot bypass it. It then falls back to opening a PR here, and deliberately
-does *not* tag, because at that moment the content is not published. The mirror is
+does _not_ tag, because at that moment the content is not published. The mirror is
 therefore not live until someone merges that PR.
 
 `mirror-tag.yaml` closes the loop from this side. It fires on push to `main`, reads the
@@ -52,7 +52,7 @@ Three constraints in that workflow are load-bearing:
 - Checkout uses `fetch-depth: 0`. The version check compares an existing tag against
   `HEAD`, which a shallow clone cannot resolve.
 - The commit subject is read through `env:`, **never interpolated into a `run:` body**.
-  `${{ }}` is substituted before bash sees it, so a crafted subject in an
+  `${{ }}` is substituted before Bash sees it, so a crafted subject in an
   attacker-influenceable commit message would execute as shell.
 
 `workflow_dispatch` exists to catch up tags missed while the workflow did not exist, and
@@ -85,7 +85,7 @@ CI validates the format and fails the PR if it does not match:
 <type>: <scope>: <description>
 ```
 
-`<type>` is a Conventional Commits keyword; `<scope>` is `hotfix`, `maint`, or a JIRA
+`<type>` is a Conventional Commits keyword; `<scope>` is `hotfix`, `maint`, or a Jira
 issue ID such as `PRO-1234`. Both colons and both spaces are required.
 
 ## Code comments
@@ -100,6 +100,6 @@ to every consumer.
 
 Document what the code **is** and does — the constraints documented above are all
 properties the code still has, which is why they earn their place. The change itself
-belongs in the commit message, the PR body, and the JIRA ticket. Where a rejected
+belongs in the commit message, the PR body, and the Jira ticket. Where a rejected
 alternative must be recorded, describe the failure mode without naming the dead
 identifier.
