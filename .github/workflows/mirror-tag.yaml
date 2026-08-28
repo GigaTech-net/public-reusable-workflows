@@ -10,8 +10,8 @@
 # Nothing then moved the tags when the PR merged. `v1` sat at v1.3.3 while `main`
 # ran four releases ahead, and every workflow in `dev` and `mercury-s3-gateway`
 # pins `@v1` -- so both public consumers stayed frozen on old content no matter
-# what was merged here. `mercury-s3-gateway` kept running a `GT_DEVSECOPS_PAT`
-# that had already been removed upstream.
+# what was merged here. `mercury-s3-gateway` kept running a token configuration
+# that had already been retired upstream.
 #
 # Tagging from this side closes that loop and needs no ruleset bypass: the
 # ruleset's `target` is `branch`, so pushing a tag is not governed by it. That is

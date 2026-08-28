@@ -142,8 +142,6 @@ jobs:
         run: gh pr merge --auto --merge "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          # The App token, not GT_DEVSECOPS_PAT. A PAT bypasses branch protection;
-          # the App cannot, because every ruleset has bypass_actors: [].
           GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
 
   report-gate:
