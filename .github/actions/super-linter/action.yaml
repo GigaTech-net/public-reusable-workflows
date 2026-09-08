@@ -51,3 +51,26 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         RUN_LOCAL: ${{ inputs.run_local }}
+        # Keep mypy's cache out of the scanned tree.
+        #
+        # Super-Linter's mypy pass writes `.mypy_cache` into the workspace and
+        # leaves `missing_stubs` there as a symlink with no target. Its Trivy
+        # pass runs afterwards, walks the workspace, calls lstat on that
+        # symlink and exits FATAL:
+        #
+        #   walk dir error: unknown error with /github/workspace/.mypy_cache/
+        #   missing_stubs: file info error: lstat ...: no such file or directory
+        #
+        # The whole lint fails, and it fails for every consumer whose Super-
+        # Linter run touches Python. It hides on a pull request, which lints
+        # changed files alone, and appears on a push to a branch that lints
+        # everything — so it looks like it belongs to whichever change happens
+        # to land. It took `manage-github-org`'s org-reconcile job down that
+        # way.
+        #
+        # Relocating the cache rather than teaching Trivy to skip it: this
+        # removes the artifact from the tree being scanned, needs no Trivy
+        # configuration, and cannot collide with a consumer's own
+        # `scan.skip-dirs`. mypy honours MYPY_CACHE_DIR, and Super-Linter's
+        # bundled mypy config sets no `cache_dir` to override it.
+        MYPY_CACHE_DIR: /tmp/mypy-cache
