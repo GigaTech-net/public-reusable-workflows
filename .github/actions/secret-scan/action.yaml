@@ -1,36 +1,47 @@
 ---
 name: Secret Scan
 description: |
-  Composite action that performs secret scanning using TruffleHog.
-  This replaces the rw-secret-scan.yaml reusable workflow to improve efficiency by running on the same runner.
+  Scans the commits the triggering event introduced for leaked credentials with
+  TruffleHog, and fails when it finds a secret, reports an error, or inspects
+  nothing. See README.md for the base/head contract per event.
 
 inputs:
   path:
-    description: "Path to scan for secrets"
+    description: "Repository path to scan"
     required: false
     default: "./"
+  base:
+    description: "Commit to scan from (exclusive). Empty: derived from the event"
+    required: false
+    default: ""
   head:
-    description: "The head reference to scan"
+    description: "Commit to scan to (inclusive). Empty: derived from the event"
     required: false
     default: ""
   extra_args:
     description: "Extra arguments to pass to TruffleHog"
     required: false
     default: "--debug --json --only-verified"
+  version:
+    description: "TruffleHog image tag"
+    required: false
+    default: "latest"
+  image:
+    description: "TruffleHog image, without tag"
+    required: false
+    default: "ghcr.io/trufflesecurity/trufflehog"
 
 runs:
   using: composite
   steps:
-    - name: Confirm correct branch to scan
+    - name: Scan the event's commit range for secrets
       shell: bash
       env:
-        REF_NAME: ${{ github.ref_name }}
-      run: echo "Preparing to scan branch $REF_NAME"
-
-    - name: Perform scan to detect leaked credentials & secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ${{ inputs.path }}
-        base: ""
-        head: ${{ inputs.head || github.ref_name }}
-        extra_args: ${{ inputs.extra_args }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_HEAD: ${{ inputs.head }}
+        INPUT_EXTRA_ARGS: ${{ inputs.extra_args }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        SCRIPT: ${{ github.action_path }}/secret-scan.sh
+      run: bash "$SCRIPT"
