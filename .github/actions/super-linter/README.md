@@ -52,6 +52,47 @@ USE_FIND_ALGORITHM=true
 VALIDATE_ALL_CODEBASE=true
 ```
 
+## Upgrading Super Linter across a major version
+
+Dependabot offers minor and patch bumps of `super-linter/super-linter` weekly
+and they merge as normal. Majors are suppressed in `.github/dependabot.yml`
+and are done by hand, because a major changes the version of every tool
+Super Linter bundles and `v1` hands that to every consumer on the next
+release.
+
+v9.0.0 enabled no new linters and still broke three consumer files that
+nobody had edited: a Checkstyle module that had been removed, a Prettier
+reindent, and a hadolint rule that had become an error.
+
+To do one:
+
+1. Pick the candidate and run it against a consumer, from a clone with real
+   Git metadata (a worktree's `.git` file does not resolve inside the
+   container):
+
+   ```bash
+   docker run --rm --platform linux/amd64 \
+     $(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' -e 's/^/-e /' .github/super-linter.env) \
+     -e RUN_LOCAL=true -e LOG_LEVEL=NOTICE \
+     -v "$PWD":/tmp/lint \
+     ghcr.io/super-linter/super-linter:slim-vX.Y.Z
+   ```
+
+   The published image is `super-linter:slim-vX.Y.Z`, not
+   `super-linter/slim:vX.Y.Z`.
+
+2. Repeat for each consumer whose languages differ — a Java repository, a
+   CSS one, a Terraform one. The linters that run are decided by the files
+   present, so one repository does not cover another.
+
+3. Fix the fallout in those repositories first, then bump the pin in
+   `action.yaml` in its own PR. Consumers pick it up when `v1` moves.
+
+Super Linter can apply many of its own corrections: re-run with
+`FIX_<LINTER>=true` alongside `VALIDATE_<LINTER>=true` and commit what it
+writes. Run it twice — a fixer can disturb formatting an earlier fixer
+settled, and the second pass restores it.
+
 ## Efficiency Benefits
 
 - Combines checkout and linting in a single action
