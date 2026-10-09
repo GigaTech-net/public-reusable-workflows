@@ -206,6 +206,88 @@ run_guard "a log with no finished-scanning summary fails" '{"level":"info-0","ms
 run_guard "findings (exit 183) fail" "$good" 183 fail
 run_guard "any other scanner exit fails" "$good" 1 fail
 
+# --- pinned scanner version --------------------------------------------------
+# The default scan runs one exact TruffleHog release, pinned by image digest;
+# the release tag is kept beside it as a constant naming the digest's release.
+if [[ "${TRUFFLEHOG_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	ok "TRUFFLEHOG_VERSION is an exact release"
+else
+	fail "TRUFFLEHOG_VERSION is an exact release" "got '${TRUFFLEHOG_VERSION:-}'"
+fi
+if [[ "${TRUFFLEHOG_DIGEST:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+	ok "TRUFFLEHOG_DIGEST is a well-formed sha256 digest"
+else
+	fail "TRUFFLEHOG_DIGEST is a well-formed sha256 digest" "got '${TRUFFLEHOG_DIGEST:-}'"
+fi
+
+action_default=$(awk '/^  version:/ { f = 1 } f && /default:/ { gsub(/["[:space:]]/, "", $2); print $2; exit }' "$here/action.yaml")
+if [ -z "$action_default" ]; then
+	ok "action.yaml version default is empty, so the digest pin applies"
+else
+	fail "action.yaml version default is empty, so the digest pin applies" "action.yaml default='$action_default'"
+fi
+
+# Scan every file under .github for a floating scanner reference. This test
+# file names the patterns, so it is excluded. A digest ref (@sha256:) is the pin
+# itself, not a float.
+github_dir="$here/../.."
+floats=$(grep -rnE 'trufflesecurity/trufflehog@|trufflehog:latest|:-latest' "$github_dir" 	--exclude=secret-scan-test.sh | grep -v 'trufflehog@sha256:')
+if [ -z "$floats" ]; then
+	ok "no file under .github floats the scanner on @ref or latest"
+else
+	fail "no file under .github floats the scanner on @ref or latest" "$floats"
+fi
+
+img=ghcr.io/trufflesecurity/trufflehog
+got=$(scanner_ref "" "" 2>&1)
+if [ "$got" = "$img@${TRUFFLEHOG_DIGEST:-}" ] && [[ "$got" =~ @sha256:[0-9a-f]{64}$ ]]; then
+	ok "scanner_ref defaults to the pinned image by digest"
+else
+	fail "scanner_ref defaults to the pinned image by digest" "got '$got'"
+fi
+got=$(scanner_ref "" 3.1.0 2>&1)
+if [ "$got" = "$img:3.1.0" ]; then
+	ok "scanner_ref uses the tag when the caller sets version"
+else
+	fail "scanner_ref uses the tag when the caller sets version" "got '$got'"
+fi
+got=$(scanner_ref example/img 1.2.3 2>&1)
+if [ "$got" = "example/img:1.2.3" ]; then
+	ok "scanner_ref honours a caller's image and version"
+else
+	fail "scanner_ref honours a caller's image and version" "got '$got'"
+fi
+got=$(scanner_ref "$img@sha256:abc" 9.9.9 2>&1)
+if [ "$got" = "$img@sha256:abc" ]; then
+	ok "scanner_ref uses an image carrying a digest as-is"
+else
+	fail "scanner_ref uses an image carrying a digest as-is" "got '$got'"
+fi
+got=$(scanner_ref localhost:5000/img:7 "" 2>&1)
+if [ "$got" = "localhost:5000/img:7" ]; then
+	ok "scanner_ref uses an image carrying a tag as-is"
+else
+	fail "scanner_ref uses an image carrying a tag as-is" "got '$got'"
+fi
+got=$(scanner_ref localhost:5000/img 1.0 2>&1)
+if [ "$got" = "localhost:5000/img:1.0" ]; then
+	ok "scanner_ref treats a registry port as no tag"
+else
+	fail "scanner_ref treats a registry port as no tag" "got '$got'"
+fi
+
+readme_row=$(grep -E '^\| `version` ' "$here/README.md")
+if [ -n "${TRUFFLEHOG_VERSION:-}" ] && grep -Fq "$TRUFFLEHOG_VERSION" <<<"$readme_row" && grep -qi 'digest' <<<"$readme_row"; then
+	ok "README inputs table names the pinned release and the digest"
+else
+	fail "README inputs table names the pinned release and the digest" "row: $readme_row"
+fi
+if grep -q '^## Scanner version' "$here/README.md"; then
+	ok "README documents how to bump the scanner"
+else
+	fail "README documents how to bump the scanner" "no '## Scanner version' section"
+fi
+
 if [ "$failures" -ne 0 ]; then
 	echo "$failures test(s) failed" >&2
 	exit 1

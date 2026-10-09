@@ -12,6 +12,34 @@ set -uo pipefail
 
 ZERO_SHA=0000000000000000000000000000000000000000
 
+# The scan runs this image by digest when the caller sets neither image nor
+# version. TRUFFLEHOG_VERSION names the release the digest was resolved from; it
+# is the tag shown for humans and is the tag a custom image falls back to. Both
+# constants change together in one reviewed commit; README.md, "Scanner
+# version", has the bump procedure.
+TRUFFLEHOG_VERSION=3.99.2 # the release tag for the digest below
+TRUFFLEHOG_DIGEST=sha256:47a84bc18a0d04a165498bbbd3bacfd84176661cbc91f8e0f85467f6a771e99a
+TRUFFLEHOG_IMAGE=ghcr.io/trufflesecurity/trufflehog
+
+# scanner_ref [IMAGE] [VERSION]: the image reference to run.
+#   - an IMAGE already carrying a digest (@) or a tag (a ':' after the last '/')
+#     is used as-is;
+#   - no VERSION: the pinned digest (default image) or the pinned release tag
+#     (a custom image, which the digest does not belong to);
+#   - VERSION set: IMAGE:VERSION, the caller's visible choice.
+scanner_ref() {
+	local image=${1:-$TRUFFLEHOG_IMAGE} version=${2:-}
+	if [[ "$image" == *@* || "${image##*/}" == *:* ]]; then
+		echo "$image"
+	elif [ -n "$version" ]; then
+		echo "$image:$version"
+	elif [ "$image" = "$TRUFFLEHOG_IMAGE" ]; then
+		echo "$image@$TRUFFLEHOG_DIGEST"
+	else
+		echo "$image:$TRUFFLEHOG_VERSION"
+	fi
+}
+
 die() {
 	echo "::error::secret-scan: $*" >&2
 	exit 1
@@ -175,16 +203,16 @@ guard() {
 	echo "secret-scan: scanned $chunks chunks, no secrets found"
 }
 
-# run_scan IMAGE VERSION BASE HEAD LOG_FILE [EXTRA_ARGS...]
+# run_scan REF BASE HEAD LOG_FILE [EXTRA_ARGS...]: REF is image:tag or image@digest.
 run_scan() {
-	local image=$1 version=$2 base=$3 head=$4 log=$5
-	shift 5
+	local ref=$1 base=$2 head=$3 log=$4
+	shift 4
 	local extra=("$@") args=(git file:///repo --branch "$head" --fail --no-update)
 	[ -n "$base" ] && args+=(--since-commit "$base")
 	local a has_json=false
 	for a in ${extra[@]+"${extra[@]}"}; do [ "$a" = --json ] && has_json=true; done
 	$has_json || args+=(--json)
-	docker run --rm -v "$PWD:/repo:ro" -w /repo "$image:$version" "${args[@]}" ${extra[@]+"${extra[@]}"} 2>&1 | tee "$log"
+	docker run --rm -v "$PWD:/repo:ro" -w /repo "$ref" "${args[@]}" ${extra[@]+"${extra[@]}"} 2>&1 | tee "$log"
 	return "${PIPESTATUS[0]}"
 }
 
@@ -211,14 +239,14 @@ main() {
 		summary_line "Secret scan skipped: $skip"
 		return 0
 	fi
-	echo "secret-scan: event=$GITHUB_EVENT_NAME base=${base:-<full history>} head=$head commits=$commits"
-	local extra=() log status
+	local ref extra=() log status
+	ref=$(scanner_ref "${INPUT_IMAGE:-}" "${INPUT_VERSION:-}")
+	echo "secret-scan: event=$GITHUB_EVENT_NAME base=${base:-<full history>} head=$head commits=$commits scanner=$ref"
 	read -r -a extra <<<"${INPUT_EXTRA_ARGS:-}"
 	log=$(mktemp)
-	run_scan "${INPUT_IMAGE:-ghcr.io/trufflesecurity/trufflehog}" "${INPUT_VERSION:-latest}" \
-		"$base" "$head" "$log" ${extra[@]+"${extra[@]}"}
+	run_scan "$ref" "$base" "$head" "$log" ${extra[@]+"${extra[@]}"}
 	status=$?
-	summary_line "Secret scan: ${base:-full history}..$head ($commits commits), TruffleHog exit $status"
+	summary_line "Secret scan: ${base:-full history}..$head ($commits commits), $ref exit $status"
 	guard "$log" "$status"
 }
 

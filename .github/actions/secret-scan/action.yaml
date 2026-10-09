@@ -23,9 +23,9 @@ inputs:
     required: false
     default: "--debug --json --only-verified"
   version:
-    description: "TruffleHog image tag"
+    description: "TruffleHog image tag. Empty (the default) runs the pinned 3.99.2 release by digest (README.md, Scanner version)"
     required: false
-    default: "latest"
+    default: ""
   image:
     description: "TruffleHog image, without tag"
     required: false
