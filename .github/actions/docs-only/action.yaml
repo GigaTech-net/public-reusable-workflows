@@ -1,0 +1,70 @@
+---
+name: Docs-only change
+description: |
+  Decides whether the change under test touches only documentation, so the
+  caller can skip scans that cannot act on documentation (Super Linter,
+  OWASP Dependency-Check) while the job itself still runs and reports its
+  required status context.
+
+  Use the output in a STEP-level `if:`, never a workflow-level path filter: a
+  workflow that does not run reports no status, and a required check that
+  never reports blocks the PR forever.
+
+  FAILS OPEN. When the diff cannot be determined, or the event is neither
+  push nor pull_request, docs_only is 'false' and the full gate runs. Skip
+  only on a positive 'true':
+
+    if: steps.changes.outputs.docs_only != 'true'
+
+  Requires a checkout with full history (actions/checkout fetch-depth: 0):
+  push events compare against origin/<default branch>.
+
+inputs:
+  docs_paths:
+    description: |
+      Comma- or newline-separated globs. A change is docs-only when it is
+      non-empty and every changed path matches one of them. Same glob dialect
+      as pr-gate's sensitive_paths: '**/' is zero or more directories, '**' is
+      anything, '*' and '?' stay within one path segment.
+    required: false
+    default: "**/*.md,docs/**,LICENSE"
+  not_docs_paths:
+    description: |
+      Comma- or newline-separated globs, evaluated first. A changed path that
+      matches one is never documentation, even under docs_paths, so a change
+      touching it runs the full gate. The default covers dependency manifests
+      and lockfiles and code and configuration file types. Same glob dialect
+      as docs_paths. An empty value disables the deny list.
+    required: false
+    default: >-
+      **/package.json,**/package-lock.json,**/yarn.lock,**/pnpm-lock.yaml,
+      **/requirements*.txt,**/Pipfile*,**/pyproject.toml,**/poetry.lock,
+      **/pom.xml,**/*.gradle,**/*.gradle.kts,**/go.mod,**/go.sum,
+      **/Gemfile*,**/Cargo.toml,**/Cargo.lock,**/*.csproj,**/Dockerfile*,
+      **/*.sh,**/*.py,**/*.js,**/*.ts,**/*.yml,**/*.yaml,**/*.json
+
+outputs:
+  docs_only:
+    description: "'true' only when every changed path is documentation; 'false' otherwise, including whenever the diff cannot be determined"
+    value: ${{ steps.classify.outputs.docs_only }}
+  reason:
+    description: "One line explaining the decision"
+    value: ${{ steps.classify.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - name: Classify changed paths
+      id: classify
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # The PR head, not github.sha: on pull_request github.sha is the
+        # synthetic merge commit.
+        HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        DOCS_PATHS: ${{ inputs.docs_paths }}
+        NOT_DOCS_PATHS: ${{ inputs.not_docs_paths }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "${ACTION_PATH}/docs-only.sh"
