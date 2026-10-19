@@ -109,21 +109,28 @@ runs:
         CONFLICT_STRATEGY: ${{ inputs.conflict-strategy }}
         CONFLICTED_FILES: ${{ steps.conflict-check.outputs.conflicted-files }}
       run: |
+        # A conflict means no PR will be opened. Every strategy except "skip"
+        # exits non-zero so the job's conclusion is `failure`: GitHub notifies
+        # on a failed scheduled run and says nothing about a successful one, so
+        # a green run that opened no PR is invisible. Six repositories went
+        # eleven weekly runs without a merge PR for exactly this reason.
+        #
+        # "skip" is the one value that means a conflict here is expected and
+        # tolerable, so it stays green by design.
         case "$CONFLICT_STRATEGY" in
           "skip")
-            echo "::warning::Merge conflicts detected. Skipping PR creation as requested."
-            echo "skip-pr=true" >> $GITHUB_OUTPUT
+            echo "::warning::Merge conflicts detected in files: $CONFLICTED_FILES"
+            echo "::warning::Skipping PR creation as requested by conflict-strategy=skip."
             ;;
           "attempt-resolve")
-            echo "::warning::Merge conflicts detected. Attempting automatic resolution..."
-            # For now, we'll just alert - auto-resolution is complex and risky
+            echo "::error::Merge conflicts detected in files: $CONFLICTED_FILES"
             echo "::error::Automatic conflict resolution not yet implemented. Please resolve conflicts manually."
-            echo "skip-pr=true" >> $GITHUB_OUTPUT
+            exit 1
             ;;
           *)
             echo "::error::Merge conflicts detected in files: $CONFLICTED_FILES"
             echo "::error::Please resolve conflicts manually before creating PR."
-            echo "skip-pr=true" >> $GITHUB_OUTPUT
+            exit 1
             ;;
         esac
 
@@ -294,10 +301,15 @@ runs:
 
     - name: Summary Output
       shell: bash
+      # always(), so the summary is still printed on the run where it matters
+      # most: the one that failed on a merge conflict.
+      if: always()
       env:
         DELAY_SECONDS: ${{ inputs.delay-seconds }}
+        CONFLICT_STRATEGY: ${{ inputs.conflict-strategy }}
         CHANGES_DETECTED: ${{ steps.check-changes.outputs.changes-detected }}
         CONFLICTS_DETECTED: ${{ steps.conflict-check.outputs.conflicts-detected }}
+        CONFLICTED_FILES: ${{ steps.conflict-check.outputs.conflicted-files }}
         EXISTING_PR: ${{ steps.check-existing-prs.outputs.existing-pr }}
         RECENT_PRS_FOUND: ${{ steps.check-recent-prs.outputs.recent-prs-found }}
         PR_CREATED: ${{ steps.create-pr.outputs.pr-created }}
@@ -306,7 +318,7 @@ runs:
         EXISTING_PR_URL: ${{ steps.check-existing-prs.outputs.existing-pr-url }}
       run: |
         echo "## Create PR Action Summary"
-        echo "- **Changes Detected**: $CHANGES_DETECTED"
+        echo "- **Changes Detected**: ${CHANGES_DETECTED:-false}"
         echo "- **Conflicts Detected**: ${CONFLICTS_DETECTED:-false}"
         echo "- **Existing PR Found**: ${EXISTING_PR:-false}"
         echo "- **Recent PRs Found**: ${RECENT_PRS_FOUND:-false}"
@@ -323,4 +335,13 @@ runs:
 
         if [ "$RECENT_PRS_FOUND" == "true" ]; then
           echo "- **Reason**: Skipped due to recent PR activity within $DELAY_SECONDS seconds"
+        fi
+
+        if [ "$CONFLICTS_DETECTED" == "true" ]; then
+          echo "- **Conflicted Files**: $CONFLICTED_FILES"
+          if [ "$CONFLICT_STRATEGY" == "skip" ]; then
+            echo "- **Reason**: No PR opened; conflict-strategy=skip tolerates this conflict"
+          else
+            echo "- **Reason**: No PR opened; conflicts must be resolved manually (job failed)"
+          fi
         fi
