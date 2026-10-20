@@ -3,6 +3,14 @@ name: Super Linter
 description: |
   Composite action that runs GitHub Super Linter with environment file support.
   Loads configuration from .github/super-linter.env if it exists and runs the Super Linter.
+  Skips the Super Linter step, and its image pull, when no changed file is in a
+  language the configuration enables and no lint configuration changed. That
+  can happen only when the configuration lists linters with
+  VALIDATE_<LANGUAGE>=true and sets no VALIDATE_<LANGUAGE>=false, whatever
+  VALIDATE_ALL_CODEBASE is; every other configuration, and any change set that
+  cannot be determined, runs Super Linter. Needs a checkout with full history
+  (actions/checkout fetch-depth: 0) for the gate to skip; without it the gate
+  runs the linter.
 
 inputs:
   github_token:
@@ -17,6 +25,20 @@ inputs:
     description: "Override RUN_LOCAL setting"
     required: false
     default: "false"
+  language_gate:
+    description: |
+      'true' skips Super Linter when no changed file is in an enabled language
+      (see the description above). Any other value always runs it.
+    required: false
+    default: "true"
+
+outputs:
+  ran:
+    description: "'false' when the language gate skipped Super Linter; 'true' otherwise"
+    value: ${{ steps.gate.outputs.run }}
+  gate_reason:
+    description: "One line explaining the gate's decision"
+    value: ${{ steps.gate.outputs.reason }}
 
 runs:
   using: composite
@@ -46,9 +68,39 @@ runs:
           echo "Environment file $ENV_FILE not found, using defaults"
         fi
 
-    - name: Run Super Linter
-      uses: super-linter/super-linter/slim@v9.0.0
+    # Reads the VALIDATE_* values the step above loaded, which are the values
+    # Super Linter itself will see, and fails open to running it.
+    - name: Decide whether Super Linter has anything to lint
+      id: gate
+      shell: bash
       env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # The PR head, not github.sha: on pull_request github.sha is the
+        # synthetic merge commit.
+        HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        # Not DEFAULT_BRANCH: the env file may set that for Super Linter, and a
+        # step-level value would override the one GITHUB_ENV carries here.
+        REPO_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        LANGUAGE_GATE: ${{ inputs.language_gate }}
+        # Changing the env file in use is a lint-configuration change.
+        ENV_FILE_PATH: ${{ inputs.env_file_path }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "${ACTION_PATH}/language-gate.sh"
+
+    # docker run, not `uses: super-linter/super-linter/slim@...`: the runner
+    # pre-pulls the image of every Docker container action nested in a composite
+    # action during job setup, whatever `if:` says, so a skipped step still paid
+    # the ~1 GB pull. See run-super-linter.sh.
+    - name: Run Super Linter
+      if: steps.gate.outputs.run != 'false'
+      shell: bash
+      run: bash "${ACTION_PATH}/run-super-linter.sh"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        # The one place the Super Linter version is pinned. Dependabot does not
+        # see an image named in a script, so a bump is this line, by hand.
+        SUPER_LINTER_IMAGE: ghcr.io/super-linter/super-linter:slim-v9.0.0
         GITHUB_TOKEN: ${{ inputs.github_token }}
         RUN_LOCAL: ${{ inputs.run_local }}
         # Keep mypy's cache out of the scanned tree.
