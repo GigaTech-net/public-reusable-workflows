@@ -21,6 +21,7 @@ env:
 jobs:
   quality-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       statuses: write
@@ -51,6 +52,7 @@ jobs:
 
       # Secret scan using composite action
       - name: Secret scan
+        timeout-minutes: 5
         uses: >-
           GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1
 
@@ -68,6 +70,7 @@ jobs:
 
       # Super Linter using composite action
       - name: Super Linter
+        timeout-minutes: 8
         uses: GigaTech-net/public-reusable-workflows/.github/actions/super-linter@v1
         with:
           github_token: ${{ env.GITHUB_TOKEN }}
