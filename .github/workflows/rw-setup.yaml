@@ -30,6 +30,7 @@ jobs:
   deprecation-notice:
     name: Deprecation Notice
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Display Deprecation Warning
         run: |
@@ -42,6 +43,7 @@ jobs:
   setup:
     name: Setup
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: deprecation-notice
     outputs:
       current-version: ${{ steps.determine-semver.outputs.current-version }}
