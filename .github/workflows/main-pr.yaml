@@ -26,6 +26,7 @@ jobs:
   # Efficient combined job using composite actions for quick checks
   quality-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       current-version: ${{ steps.setup.outputs.current-version }}
       current-v-version: ${{ steps.setup.outputs.current-v-version }}
@@ -64,6 +65,7 @@ jobs:
 
       # Secret scan using composite action
       - name: Secret scan
+        timeout-minutes: 5
         uses: >-
           GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1
 
@@ -96,6 +98,7 @@ jobs:
     name: Auto approve PR
     needs: [quality-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pull-requests: write
     if: |
@@ -121,6 +124,7 @@ jobs:
     name: Enable Auto Merge
     needs: [quality-checks, auto-approve]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -148,6 +152,7 @@ jobs:
     name: Report gate decision
     needs: [quality-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: always() && needs.quality-checks.outputs.auto_approve_eligible != 'true'
     steps:
       - name: Human review required
