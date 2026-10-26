@@ -21,6 +21,7 @@ jobs:
   deprecation-notice:
     name: Deprecation Notice
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Display Deprecation Warning
         run: |
@@ -33,6 +34,7 @@ jobs:
   dependency-check:
     name: Dependency Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: deprecation-notice
     steps:
       - name: Checkout
@@ -41,6 +43,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run dependency check
+        timeout-minutes: 8
         uses: dependency-check/Dependency-Check_Action@main
         id: dependency-check
         with:

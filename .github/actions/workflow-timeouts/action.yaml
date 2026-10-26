@@ -1,0 +1,44 @@
+---
+name: Workflow timeouts
+description: |
+  Fails when a workflow in the calling repository has a job without
+  timeout-minutes, and names the file and the job. A job that wedges on a call
+  that never returns is then killed at its bound instead of GitHub's six-hour
+  default.
+
+  A job that calls a reusable workflow (a job-level `uses:`) is exempt: GitHub
+  rejects timeout-minutes there, and the called workflow's own jobs carry the
+  bound. An expression value counts as declared.
+
+  With check_scanner_steps, each container or scanner step (Super Linter,
+  dependency-check, secret scan, ZAP, docker build, run, pull) must also carry
+  a step-level timeout-minutes, so that step fails at its own bound.
+
+  Requires a checkout of the calling repository.
+
+inputs:
+  workflows_path:
+    description: "Directory whose *.yml and *.yaml files are checked (not recursive)"
+    required: false
+    default: ".github/workflows"
+  check_scanner_steps:
+    description: "'true' to also require a step-level timeout-minutes on container and scanner steps"
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Check workflow timeouts
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        WORKFLOWS_PATH: ${{ inputs.workflows_path }}
+        CHECK_SCANNER_STEPS: ${{ inputs.check_scanner_steps }}
+      run: |
+        flag=""
+        if [ "$CHECK_SCANNER_STEPS" = "true" ]; then
+          flag="--scanner-steps"
+        fi
+        # shellcheck disable=SC2086  # flag is empty or a single option
+        bash "${ACTION_PATH}/workflow-timeouts.sh" $flag "${WORKFLOWS_PATH}"
