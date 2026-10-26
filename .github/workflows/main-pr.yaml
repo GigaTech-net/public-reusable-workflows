@@ -65,6 +65,7 @@ jobs:
 
       # Secret scan using composite action
       - name: Secret scan
+        timeout-minutes: 5
         uses: >-
           GigaTech-net/public-reusable-workflows/.github/actions/secret-scan@v1
 
